@@ -132,9 +132,6 @@ class ItemAttributes
 		void setSpecialDescription(const std::string& desc) {
 			setStrAttr(ATTR_ITEM_DESC, desc);
 		}
-		void resetSpecialDescription() {
-			removeAttribute(ATTR_ITEM_DESC);
-		}
 		const std::string& getSpecialDescription() const {
 			return getStrAttr(ATTR_ITEM_DESC);
 		}
@@ -215,7 +212,7 @@ class ItemAttributes
 		void setCorpseOwner(uint32_t _corpseOwner) {
 			setIntAttr(ATTR_ITEM_CORPSEOWNER, _corpseOwner);
 		}
-		uint32_t getCorpseOwner() {
+		uint32_t getCorpseOwner() const {
 			return getIntAttr(ATTR_ITEM_CORPSEOWNER);
 		}
 
@@ -399,9 +396,6 @@ class Item : virtual public Thing
 		void setSpecialDescription(const std::string& desc) {
 			setStrAttr(ATTR_ITEM_DESC, desc);
 		}
-		void resetSpecialDescription() {
-			removeAttribute(ATTR_ITEM_DESC);
-		}
 		const std::string& getSpecialDescription() const {
 			return getStrAttr(ATTR_ITEM_DESC);
 		}
@@ -490,7 +484,7 @@ class Item : virtual public Thing
 		void setCorpseOwner(uint32_t _corpseOwner) {
 			setIntAttr(ATTR_ITEM_CORPSEOWNER, _corpseOwner);
 		}
-		uint32_t getCorpseOwner() {
+		uint32_t getCorpseOwner() const {
 			if (!attributes) {
 				return 0;
 			}
@@ -548,6 +542,9 @@ class Item : virtual public Thing
 		uint16_t getClientID() const {
 			return items[id].clientId;
 		}
+		uint16_t getWareID() const {
+			return items[id].wareId;
+		}
 		void setID(uint16_t newid);
 
 		// Returns the player that is holding this item in his inventory
@@ -595,7 +592,7 @@ class Item : virtual public Thing
 		}
 
 		int32_t getWorth() const;
-		void getLight(LightInfo& lightInfo);
+		void getLight(LightInfo& lightInfo) const;
 
 		bool hasProperty(enum ITEMPROPERTY prop) const;
 		bool isBlocking() const {
@@ -710,7 +707,7 @@ class Item : virtual public Thing
 		uint32_t getDefaultDuration() const {
 			return items[id].decayTime * 1000;
 		}
-		bool canDecay();
+		bool canDecay() const;
 
 		virtual bool canRemove() const {
 			return true;

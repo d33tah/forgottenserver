@@ -47,16 +47,16 @@ bool Ban::acceptConnection(uint32_t clientip)
 
 	ConnectBlock& connectBlock = it->second;
 	if (connectBlock.blockTime > currentTime) {
-		connectBlock.blockTime += 225;
+		connectBlock.blockTime += 250;
 		return false;
 	}
 
 	int64_t timeDiff = currentTime - connectBlock.lastAttempt;
 	connectBlock.lastAttempt = currentTime;
-	if (timeDiff <= 8000) {
-		if (++connectBlock.count > 3) {
+	if (timeDiff <= 5000) {
+		if (++connectBlock.count > 5) {
 			connectBlock.count = 0;
-			if (timeDiff <= 800) {
+			if (timeDiff <= 500) {
 				connectBlock.blockTime = currentTime + 3000;
 				return false;
 			}
@@ -72,7 +72,7 @@ bool IOBan::isAccountBanned(uint32_t accountId, BanInfo& banInfo)
 	Database* db = Database::getInstance();
 
 	std::ostringstream query;
-	query << "SELECT `reason`, `expires_at`, (SELECT `name` FROM `players` WHERE `id` = `banned_by`) AS `name` FROM `account_bans` WHERE `account_id` = " << accountId;
+	query << "SELECT `reason`, `expires_at`, `banned_at`, `banned_by`, (SELECT `name` FROM `players` WHERE `id` = `banned_by`) AS `name` FROM `account_bans` WHERE `account_id` = " << accountId;
 
 	DBResult* result = db->storeQuery(query.str());
 	if (!result) {
@@ -82,9 +82,11 @@ bool IOBan::isAccountBanned(uint32_t accountId, BanInfo& banInfo)
 	int64_t expiresAt = result->getNumber<int64_t>("expires_at");
 	if (expiresAt != 0 && time(nullptr) > expiresAt) {
 		// Move the ban to history if it has expired
+		query.str("");
 		query << "INSERT INTO `account_ban_history` (`account_id`, `reason`, `banned_at`, `expired_at`, `banned_by`) VALUES (" << accountId << ',' << db->escapeString(result->getDataString("reason")) << ',' << result->getDataInt("banned_at") << ',' << expiresAt << ',' << result->getDataInt("banned_by") << ')';
 		db->executeQuery(query.str());
 
+		query.str("");
 		query << "DELETE FROM `account_bans WHERE `account_id` = " << accountId;
 		db->executeQuery(query.str());
 

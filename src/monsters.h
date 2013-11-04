@@ -44,7 +44,6 @@ struct LootBlock {
 
 		subType = -1;
 		actionId = -1;
-		text = "";
 	}
 };
 
@@ -96,6 +95,13 @@ class MonsterType
 		uint64_t experience;
 
 		Outfit_t outfit;
+
+		LuaScriptInterface* scriptInterface;
+		int32_t creatureAppearEvent;
+		int32_t creatureDisappearEvent;
+		int32_t creatureMoveEvent;
+		int32_t creatureSayEvent;
+		int32_t thinkEvent;
 
 		uint32_t manaCost;
 		uint32_t yellChance;
@@ -165,6 +171,9 @@ class Monsters
 
 		std::map<std::string, uint32_t> monsterNames;
 		std::map<uint32_t, MonsterType*> monsters;
+
+		LuaScriptInterface* scriptInterface;
+		std::map<MonsterType*, std::string> monsterScriptList;
 
 		bool loaded;
 };

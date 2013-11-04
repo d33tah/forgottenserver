@@ -19,6 +19,7 @@
 
 #ifndef __OTSERV_ENUMS_H__
 #define __OTSERV_ENUMS_H__
+
 #include <string>
 #include <list>
 
@@ -362,18 +363,10 @@ struct ShopInfo {
 		subType = 1;
 		buyPrice = 0;
 		sellPrice = 0;
-		realName = "";
-	};
+	}
 
-	ShopInfo(uint32_t _itemId, int32_t _subType = 0,
-	         uint32_t _buyPrice = 0, uint32_t _sellPrice = 0,
-	         std::string _realName = "") {
-		itemId = _itemId;
-		subType = _subType;
-		buyPrice = _buyPrice;
-		sellPrice = _sellPrice;
-		realName = _realName;
-	};
+	ShopInfo(uint32_t itemId, int32_t subType = 0, uint32_t buyPrice = 0, uint32_t sellPrice = 0, std::string realName = "")
+		: itemId(itemId), subType(subType), buyPrice(buyPrice), sellPrice(sellPrice), realName(realName) {}
 };
 
 struct MarketOffer {
@@ -436,6 +429,19 @@ struct ModalWindow
 
 	ModalWindow(uint32_t id, const std::string& title, const std::string& message)
 		: title(title), message(message), id(id), defaultEnterButton(0xFF), defaultEscapeButton(0xFF), priority(false) {}
+};
+
+struct CombatDamage {
+	struct {
+		CombatType_t type;
+		int32_t value;
+	} primary, secondary;
+
+	CombatDamage()
+	{
+		primary.type = secondary.type = COMBAT_NONE;
+		primary.value = secondary.value = 0;
+	}
 };
 
 typedef std::list<MarketOffer> MarketOfferList;

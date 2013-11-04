@@ -132,8 +132,8 @@ class Monster : public Creature
 
 		virtual void onCreatureAppear(const Creature* creature, bool isLogin);
 		virtual void onCreatureDisappear(const Creature* creature, uint32_t stackpos, bool isLogout);
-		virtual void onCreatureMove(const Creature* creature, const Tile* newTile, const Position& newPos,
-		                            const Tile* oldTile, const Position& oldPos, bool teleport);
+		virtual void onCreatureMove(const Creature* creature, const Tile* newTile, const Position& newPos, const Tile* oldTile, const Position& oldPos, bool teleport);
+		virtual void onCreatureSay(const Creature* creature, SpeakClasses type, const std::string& text, Position* pos = nullptr);
 
 		virtual void drainHealth(Creature* attacker, int32_t damage);
 		virtual void changeHealth(int32_t healthChange, bool sendHealthChange = true);
@@ -157,14 +157,14 @@ class Monster : public Creature
 		bool searchTarget(TargetSearchType_t searchType = TARGETSEARCH_DEFAULT);
 		bool selectTarget(Creature* creature);
 
-		const CreatureList& getTargetList() {
+		const CreatureList& getTargetList() const {
 			return targetList;
 		}
-		const CreatureHashSet& getFriendList() {
+		const CreatureHashSet& getFriendList() const {
 			return friendList;
 		}
 
-		bool isTarget(Creature* creature);
+		bool isTarget(Creature* creature) const;
 		bool isFleeing() const {
 			return getHealth() <= mType->runAwayHealth;
 		}
@@ -213,6 +213,11 @@ class Monster : public Creature
 		void onCreatureFound(Creature* creature, bool pushFront = false);
 
 		void updateLookDirection();
+
+		void addFriend(Creature* creature);
+		void removeFriend(Creature* creature);
+		void addTarget(Creature* creature, bool pushFront = false);
+		void removeTarget(Creature* creature);
 
 		void updateTargetList();
 		void clearTargetList();
@@ -274,6 +279,8 @@ class Monster : public Creature
 		virtual bool useCacheMap() const {
 			return true;
 		}
+
+		friend class LuaScriptInterface;
 };
 
 #endif

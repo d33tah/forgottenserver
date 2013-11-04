@@ -75,11 +75,14 @@ Game::Game() :
 	gameState = GAME_STATE_NORMAL;
 	worldType = WORLD_TYPE_PVP;
 
+	checkCreatureLastIndex = 0;
+
 	checkLightEvent = 0;
 	checkCreatureEvent = 0;
 	checkDecayEvent = 0;
 
 	map = nullptr;
+	services = nullptr;
 	lastStageLevel = 0;
 	playersRecord = 0;
 	motdNum = 0;
@@ -131,11 +134,8 @@ void Game::start(ServiceManager* servicer)
 
 	checkLightEvent = g_scheduler.addEvent(createSchedulerTask(EVENT_LIGHTINTERVAL,
 	                                       boost::bind(&Game::checkLight, this)));
-
-	checkCreatureLastIndex = 0;
 	checkCreatureEvent = g_scheduler.addEvent(createSchedulerTask(EVENT_CREATURE_THINK_INTERVAL,
 	                     boost::bind(&Game::checkCreatures, this)));
-
 	checkDecayEvent = g_scheduler.addEvent(createSchedulerTask(EVENT_DECAYINTERVAL,
 	                                       boost::bind(&Game::checkDecay, this)));
 }
@@ -233,11 +233,10 @@ void Game::saveGameState()
 
 	stateTime = 0;
 	std::cout << "Saving server..." << std::endl;
-	IOLoginData* ioLoginData = IOLoginData::getInstance();
 
 	for (const auto& it : players) {
 		it.second->loginPosition = it.second->getPosition();
-		ioLoginData->savePlayer(it.second);
+		IOLoginData::savePlayer(it.second);
 	}
 
 	map->saveMap();
@@ -254,16 +253,20 @@ void Game::loadGameState()
 	ScriptEnvironment::loadGameState();
 }
 
-int32_t Game::loadMap(const std::string& filename)
+int32_t Game::loadMainMap(const std::string& filename)
+{
+	Player::maxMessageBuffer = g_config.getNumber(ConfigManager::MAX_MESSAGEBUFFER);
+	Monster::despawnRange = g_config.getNumber(ConfigManager::DEFAULT_DESPAWNRANGE);
+	Monster::despawnRadius = g_config.getNumber(ConfigManager::DEFAULT_DESPAWNRADIUS);
+	return loadMap("data/world/" + filename + ".otbm");
+}
+
+int32_t Game::loadMap(const std::string& path)
 {
 	if (!map) {
 		map = new Map;
 	}
-
-	Player::maxMessageBuffer = g_config.getNumber(ConfigManager::MAX_MESSAGEBUFFER);
-	Monster::despawnRange = g_config.getNumber(ConfigManager::DEFAULT_DESPAWNRANGE);
-	Monster::despawnRadius = g_config.getNumber(ConfigManager::DEFAULT_DESPAWNRADIUS);
-	return map->loadMap("data/world/" + filename + ".otbm");
+	return map->loadMap(path);
 }
 
 void Game::refreshMap()
@@ -601,28 +604,6 @@ Player* Game::getPlayerByAccount(uint32_t acc)
 		}
 	}
 	return nullptr;
-}
-
-PlayerVector Game::getPlayersByAccount(uint32_t acc)
-{
-	PlayerVector matches;
-	for (const auto& it : players) {
-		if (it.second->getAccount() == acc) {
-			matches.push_back(it.second);
-		}
-	}
-	return matches;
-}
-
-PlayerVector Game::getPlayersByIP(uint32_t ipadress, uint32_t mask)
-{
-	PlayerVector matches;
-	for (const auto& it : players) {
-		if ((it.second->getIP() & mask) == (ipadress & mask)) {
-			matches.push_back(it.second);
-		}
-	}
-	return matches;
 }
 
 bool Game::internalPlaceCreature(Creature* creature, const Position& pos, bool extendedPos /*=false*/, bool forced /*= false*/)
@@ -2377,7 +2358,7 @@ bool Game::playerOpenPrivateChannel(uint32_t playerId, std::string& receiver)
 		return false;
 	}
 
-	if (!IOLoginData::getInstance()->formatPlayerName(receiver)) {
+	if (!IOLoginData::formatPlayerName(receiver)) {
 		player->sendCancel("A player with this name does not exist.");
 		return true;
 	}
@@ -2736,26 +2717,6 @@ bool Game::playerMoveUpContainer(uint32_t playerId, uint8_t cid)
 	return true;
 }
 
-bool Game::playerUpdateTile(uint32_t playerId, const Position& pos)
-{
-	Player* player = getPlayerByID(playerId);
-	if (!player) {
-		return false;
-	}
-
-	if (!player->canSee(pos)) {
-		return false;
-	}
-
-	Tile* tile = getTile(pos);
-	if (!tile) {
-		return false;
-	}
-
-	player->sendUpdateTile(tile, pos);
-	return true;
-}
-
 bool Game::playerUpdateContainer(uint32_t playerId, uint8_t cid)
 {
 	Player* player = getPlayerByID(playerId);
@@ -2947,6 +2908,10 @@ bool Game::playerSeekInContainer(uint32_t playerId, uint8_t containerId, uint16_
 
 	Container* container = player->getContainerByID(containerId);
 	if (!container) {
+		return false;
+	}
+
+	if (!container->hasPagination()) {
 		return false;
 	}
 
@@ -3695,7 +3660,7 @@ bool Game::playerRequestAddVip(uint32_t playerId, const std::string& vip_name)
 	uint32_t guid;
 	bool specialVip;
 
-	if (!IOLoginData::getInstance()->getGuidByNameEx(guid, specialVip, real_name)) {
+	if (!IOLoginData::getGuidByNameEx(guid, specialVip, real_name)) {
 		player->sendTextMessage(MSG_STATUS_SMALL, "A player with that name does not exist.");
 		return false;
 	}
@@ -3917,7 +3882,7 @@ bool Game::playerSay(uint32_t playerId, uint16_t channelId, SpeakClasses type,
 	return false;
 }
 
-bool Game::playerSayCommand(Player* player, SpeakClasses type, const std::string& text)
+bool Game::playerSayCommand(Player* player, SpeakClasses type, const std::string& text) const
 {
 	if (text.empty()) {
 		return false;
@@ -4040,44 +4005,14 @@ bool Game::playerSpeakToNpc(Player* player, const std::string& text)
 	return true;
 }
 
-bool Game::npcSpeakToPlayer(Npc* npc, Player* player, const std::string& text, bool publicize)
-{
-	if (player != nullptr) {
-		player->sendCreatureSay(npc, SPEAK_PRIVATE_NP, text);
-		player->onCreatureSay(npc, SPEAK_PRIVATE_NP, text);
-	}
-
-	if (publicize) {
-		SpectatorVec list;
-		getSpectators(list, npc->getPosition());
-
-		//send to client
-		for (Creature* spectator : list) {
-			if (spectator != player) {
-				if (Player* tmpPlayer = spectator->getPlayer()) {
-					tmpPlayer->sendCreatureSay(npc, SPEAK_SAY, text);
-				}
-			}
-		}
-
-		//event method
-		for (Creature* spectator : list) {
-			if (spectator != player) {
-				spectator->onCreatureSay(npc, SPEAK_SAY, text);
-			}
-		}
-	}
-	return true;
-}
-
 //--
 bool Game::canThrowObjectTo(const Position& fromPos, const Position& toPos, bool checkLineOfSight /*= true*/,
-                            int32_t rangex /*= Map::maxClientViewportX*/, int32_t rangey /*= Map::maxClientViewportY*/)
+                            int32_t rangex /*= Map::maxClientViewportX*/, int32_t rangey /*= Map::maxClientViewportY*/) const
 {
 	return map->canThrowObjectTo(fromPos, toPos, checkLineOfSight, rangex, rangey);
 }
 
-bool Game::isSightClear(const Position& fromPos, const Position& toPos, bool floorCheck)
+bool Game::isSightClear(const Position& fromPos, const Position& toPos, bool floorCheck) const
 {
 	return map->isSightClear(fromPos, toPos, floorCheck);
 }
@@ -4488,7 +4423,6 @@ bool Game::combatChangeHealth(CombatType_t combatType, Creature* attacker, Creat
 		}
 
 		Player* attackerPlayer;
-
 		if (attacker) {
 			attackerPlayer = attacker->getPlayer();
 		} else {
@@ -4496,7 +4430,6 @@ bool Game::combatChangeHealth(CombatType_t combatType, Creature* attacker, Creat
 		}
 
 		Player* targetPlayer = target->getPlayer();
-
 		if (attackerPlayer && targetPlayer) {
 			if (g_config.getBoolean(ConfigManager::CANNOT_ATTACK_SAME_LOOKFEET) && attackerPlayer->defaultOutfit.lookFeet == target->defaultOutfit.lookFeet && combatType != COMBAT_HEALING) {
 				return false;
@@ -4512,41 +4445,48 @@ bool Game::combatChangeHealth(CombatType_t combatType, Creature* attacker, Creat
 		realHealthChange = target->getHealth() - realHealthChange;
 
 		if (realHealthChange > 0 && !target->isInGhostMode()) {
+			std::string pluralString = (realHealthChange != 1 ? "s." : ".");
 			std::ostringstream ss;
-
 			if (!attacker) {
-				ss << ucfirst(target->getNameDescription()) << " was healed for " << realHealthChange << " hitpoint" << (realHealthChange != 1 ? "s." : ".");
+				ss << ucfirst(target->getNameDescription()) << " was healed for " << realHealthChange << " hitpoint" << pluralString;
 			} else if (attacker == target) {
-				ss << ucfirst(attacker->getNameDescription()) << " healed " << (targetPlayer ? (targetPlayer->getSex() == PLAYERSEX_FEMALE ? "herself for " : "himself for ") : "itself for ") << realHealthChange << " hitpoint" << (realHealthChange != 1 ? "s." : ".");
+				ss << ucfirst(attacker->getNameDescription()) << " healed " << (targetPlayer ? (targetPlayer->getSex() == PLAYERSEX_FEMALE ? "herself for " : "himself for ") : "itself for ") << realHealthChange << " hitpoint" << pluralString;
 			} else {
-				ss << ucfirst(attacker->getNameDescription()) << " healed " << target->getNameDescription() << " for " << realHealthChange << " hitpoint" << (realHealthChange != 1 ? "s." : ".");
+				ss << ucfirst(attacker->getNameDescription()) << " healed " << target->getNameDescription() << " for " << realHealthChange << " hitpoint" << pluralString;
 			}
 
-			std::string message = ss.str();
+			std::string spectatorMessage = ss.str();
+
+			TextMessage message;
+			message.position = targetPos;
+			message.primary.value = realHealthChange;
+			message.primary.color = TEXTCOLOR_MAYABLUE;
 
 			SpectatorVec list;
 			getSpectators(list, targetPos, false, true);
 			for (Creature* spectator : list) {
 				Player* tmpPlayer = spectator->getPlayer();
 				if (tmpPlayer == attackerPlayer && attackerPlayer != targetPlayer) {
-					std::ostringstream tmpSs;
-					tmpSs << "You heal " << target->getNameDescription() << " for " << realHealthChange << " hitpoint" << (realHealthChange != 1 ? "s." : ".");
-					attackerPlayer->sendHealMessage(MSG_HEALED, tmpSs.str(), targetPos, realHealthChange, TEXTCOLOR_MAYABLUE);
+					ss.str("");
+					ss << "You heal " << target->getNameDescription() << " for " << realHealthChange << " hitpoint" << pluralString;
+					message.type = MSG_HEALED;
+					message.text = ss.str();
 				} else if (tmpPlayer == targetPlayer) {
-					std::ostringstream tmpSs;
-
+					ss.str("");
 					if (!attacker) {
-						tmpSs << "You were healed for " << realHealthChange << " hitpoint" << (realHealthChange != 1 ? "s." : ".");
+						ss << "You were healed for " << realHealthChange << " hitpoint" << pluralString;
 					} else if (targetPlayer == attackerPlayer) {
-						tmpSs << "You heal yourself for " << realHealthChange << " hitpoint" << (realHealthChange != 1 ? "s." : ".");
+						ss << "You heal yourself for " << realHealthChange << " hitpoint" << pluralString;
 					} else {
-						tmpSs << "You were healed by " << attacker->getNameDescription() << " for " << realHealthChange << " hitpoint" << (realHealthChange != 1 ? "s." : ".");
+						ss << "You were healed by " << attacker->getNameDescription() << " for " << realHealthChange << " hitpoint" << pluralString;
 					}
-
-					targetPlayer->sendHealMessage(MSG_HEALED, tmpSs.str(), targetPos, realHealthChange, TEXTCOLOR_MAYABLUE);
+					message.type = MSG_HEALED;
+					message.text = ss.str();
 				} else {
-					tmpPlayer->sendHealMessage(MSG_HEALED_OTHERS, message, targetPos, realHealthChange, TEXTCOLOR_MAYABLUE);
+					message.type = MSG_HEALED_OTHERS;
+					message.text = spectatorMessage;
 				}
+				tmpPlayer->sendTextMessage(message);
 			}
 		}
 	} else {
@@ -4581,14 +4521,20 @@ bool Game::combatChangeHealth(CombatType_t combatType, Creature* attacker, Creat
 			return true;
 		}
 
+		TextMessage message;
+		message.position = targetPos;
+
 		if (target->hasCondition(CONDITION_MANASHIELD) && combatType != COMBAT_UNDEFINEDDAMAGE) {
 			int32_t manaDamage = std::min<int32_t>(target->getMana(), damage);
 			if (manaDamage != 0) {
+				for (CreatureEvent* creatureEvent : target->getCreatureEvents(CREATURE_EVENT_CHANGEMANA)) {
+					creatureEvent->executeChangeMana(target, attacker, manaDamage);
+				}
+
 				target->drainMana(attacker, manaDamage);
 				addMagicEffect(list, targetPos, NM_ME_LOSE_ENERGY);
 
 				std::ostringstream ss;
-
 				if (!attacker) {
 					ss << ucfirst(target->getNameDescription()) << " loses " << manaDamage << " mana.";
 				} else if (attacker == target) {
@@ -4597,30 +4543,35 @@ bool Game::combatChangeHealth(CombatType_t combatType, Creature* attacker, Creat
 					ss << ucfirst(target->getNameDescription()) << " loses " << manaDamage << " mana blocking an attack by " << attacker->getNameDescription() << '.';
 				}
 
-				std::string message = ss.str();
+				std::string spectatorMessage = ss.str();
+
+				message.primary.value = manaDamage;
+				message.primary.color = TEXTCOLOR_BLUE;
 
 				for (Creature* spectator : list) {
 					Player* tmpPlayer = spectator->getPlayer();
 					if (tmpPlayer->getPosition().z == targetPos.z) {
 						if (tmpPlayer == attackerPlayer && attackerPlayer != targetPlayer) {
-							std::ostringstream tmpSs;
-							tmpSs << ucfirst(target->getNameDescription()) << " loses " << manaDamage << " mana blocking your attack.";
-							attackerPlayer->sendDamageMessage(MSG_DAMAGE_DEALT, tmpSs.str(), targetPos, manaDamage, TEXTCOLOR_BLUE);
+							ss.str("");
+							ss << ucfirst(target->getNameDescription()) << " loses " << manaDamage << " mana blocking your attack.";
+							message.type = MSG_DAMAGE_DEALT;
+							message.text = ss.str();
 						} else if (tmpPlayer == targetPlayer) {
-							std::ostringstream tmpSs;
-
+							ss.str("");
 							if (!attacker) {
-								tmpSs << "You lose " << manaDamage << " mana.";
+								ss << "You lose " << manaDamage << " mana.";
 							} else if (targetPlayer == attackerPlayer) {
-								tmpSs << "You lose " << manaDamage << " mana blocking an attack by yourself.";
+								ss << "You lose " << manaDamage << " mana blocking an attack by yourself.";
 							} else {
-								tmpSs << "You lose " << manaDamage << " mana blocking an attack by " << attacker->getNameDescription() << '.';
+								ss << "You lose " << manaDamage << " mana blocking an attack by " << attacker->getNameDescription() << '.';
 							}
-
-							targetPlayer->sendDamageMessage(MSG_DAMAGE_RECEIVED, tmpSs.str(), targetPos, manaDamage, TEXTCOLOR_BLUE);
+							message.type = MSG_DAMAGE_RECEIVED;
+							message.text = ss.str();
 						} else {
-							tmpPlayer->sendDamageMessage(MSG_DAMAGE_OTHERS, message, targetPos, manaDamage, TEXTCOLOR_BLUE);
+							message.type = MSG_DAMAGE_OTHERS;
+							message.text = spectatorMessage;
 						}
+						tmpPlayer->sendTextMessage(message);
 					}
 				}
 
@@ -4628,12 +4579,22 @@ bool Game::combatChangeHealth(CombatType_t combatType, Creature* attacker, Creat
 			}
 		}
 
-		damage = std::min<int32_t>(target->getHealth(), damage);
+		int32_t targetHealth = target->getHealth();
+		damage = std::min<int32_t>(targetHealth, damage);
 		if (damage > 0) {
-			if (damage >= target->getHealth()) {
-				//scripting event - onPrepareDeath
-				const CreatureEventList& prepareDeathEvents = target->getCreatureEvents(CREATURE_EVENT_PREPAREDEATH);
-				for (CreatureEvent* creatureEvent : prepareDeathEvents) {
+			const auto& changeHealthEvents = target->getCreatureEvents(CREATURE_EVENT_CHANGEHEALTH);
+			if (!changeHealthEvents.empty()) {
+				CombatDamage tmpDamage;
+				tmpDamage.primary.type = combatType;
+				tmpDamage.primary.value = damage;
+
+				for (CreatureEvent* creatureEvent : changeHealthEvents) {
+					creatureEvent->executeChangeHealth(target, attacker, tmpDamage);
+				}
+			}
+
+			if (damage >= targetHealth) {
+				for (CreatureEvent* creatureEvent : target->getCreatureEvents(CREATURE_EVENT_PREPAREDEATH)) {
 					creatureEvent->executeOnPrepareDeath(target, attacker);
 				}
 			}
@@ -4641,46 +4602,48 @@ bool Game::combatChangeHealth(CombatType_t combatType, Creature* attacker, Creat
 			target->drainHealth(attacker, damage);
 			addCreatureHealth(list, target);
 
-			TextColor_t textColor = TEXTCOLOR_NONE;
-			uint8_t hitEffect = 0;
+			uint8_t hitEffect;
+			combatGetTypeInfo(combatType, target, message.primary.color, hitEffect);
 
-			combatGetTypeInfo(combatType, target, textColor, hitEffect);
-			if (textColor != TEXTCOLOR_NONE) {
+			if (message.primary.color != TEXTCOLOR_NONE) {
+				message.primary.value = damage;
 				addMagicEffect(list, targetPos, hitEffect);
 
+				std::string pluralString = (damage != 1 ? "s" : "");
 				std::ostringstream ss;
-
 				if (!attacker) {
-					ss << ucfirst(target->getNameDescription()) << " loses " << damage << " hitpoint" << (damage != 1 ? "s." : ".");
+					ss << ucfirst(target->getNameDescription()) << " loses " << damage << " hitpoint" << pluralString << ".";
 				} else if (attacker == target) {
-					ss << ucfirst(target->getNameDescription()) << " loses " << damage << " hitpoint" << (damage != 1 ? "s" : "") << " due to " << (targetPlayer ? (targetPlayer->getSex() == PLAYERSEX_FEMALE ? "her" : "his") : "its") << " own attack.";
+					ss << ucfirst(target->getNameDescription()) << " loses " << damage << " hitpoint" << pluralString << " due to " << (targetPlayer ? (targetPlayer->getSex() == PLAYERSEX_FEMALE ? "her" : "his") : "its") << " own attack.";
 				} else {
-					ss << ucfirst(target->getNameDescription()) << " loses " << damage << " hitpoint" << (damage != 1 ? "s" : "") << " due to an attack by " << attacker->getNameDescription() << '.';
+					ss << ucfirst(target->getNameDescription()) << " loses " << damage << " hitpoint" << pluralString << " due to an attack by " << attacker->getNameDescription() << '.';
 				}
 
-				std::string message = ss.str();
-
+				std::string spectatorMessage = ss.str();
 				for (Creature* spectator : list) {
 					Player* tmpPlayer = spectator->getPlayer();
 					if (tmpPlayer->getPosition().z == targetPos.z) {
 						if (tmpPlayer == attackerPlayer && attackerPlayer != targetPlayer) {
-							std::ostringstream tmpSs;
-							tmpSs << ucfirst(target->getNameDescription()) << " loses " << damage << " hitpoint" << (damage != 1 ? "s" : "") << " due to your attack.";
-							tmpPlayer->sendDamageMessage(MSG_DAMAGE_DEALT, tmpSs.str(), targetPos, damage, textColor);
+							ss.str("");
+							ss << ucfirst(target->getNameDescription()) << " loses " << damage << " hitpoint" << pluralString << " due to your attack.";
+							message.type = MSG_DAMAGE_DEALT;
+							message.text = ss.str();
 						} else if (tmpPlayer == targetPlayer) {
-							std::ostringstream tmpSs;
+							ss.str("");
 							if (!attacker) {
-								tmpSs << "You lose " << damage << " hitpoint" << (damage != 1 ? "s." : ".");
+								ss << "You lose " << damage << " hitpoint" << pluralString << ".";
 							} else if (targetPlayer == attackerPlayer) {
-								tmpSs << "You lose " << damage << " hitpoint" << (damage != 1 ? "s" : "") << " due to your own attack.";
+								ss << "You lose " << damage << " hitpoint" << pluralString << " due to your own attack.";
 							} else {
-								tmpSs << "You lose " << damage << " hitpoint" << (damage != 1 ? "s" : "") << " due to an attack by " << attacker->getNameDescription() << '.';
+								ss << "You lose " << damage << " hitpoint" << pluralString << " due to an attack by " << attacker->getNameDescription() << '.';
 							}
-
-							tmpPlayer->sendDamageMessage(MSG_DAMAGE_RECEIVED, tmpSs.str(), targetPos, damage, textColor);
+							message.type = MSG_DAMAGE_RECEIVED;
+							message.text = ss.str();
 						} else {
-							tmpPlayer->sendDamageMessage(MSG_DAMAGE_OTHERS, message, targetPos, damage, textColor);
+							message.type = MSG_DAMAGE_OTHERS;
+							message.text = spectatorMessage;
 						}
+						tmpPlayer->sendTextMessage(message);
 					}
 				}
 			}
@@ -4802,6 +4765,10 @@ bool Game::combatChangeHealth(Creature* attacker, Creature* target, CombatDamage
 		if (target->hasCondition(CONDITION_MANASHIELD) && damage.primary.type != COMBAT_UNDEFINEDDAMAGE) {
 			int32_t manaDamage = std::min<int32_t>(target->getMana(), -healthChange);
 			if (manaDamage != 0) {
+				for (CreatureEvent* creatureEvent : target->getCreatureEvents(CREATURE_EVENT_CHANGEMANA)) {
+					creatureEvent->executeChangeMana(target, attacker, manaDamage);
+				}
+
 				target->drainMana(attacker, manaDamage);
 				addMagicEffect(list, targetPos, NM_ME_LOSE_ENERGY);
 
@@ -4864,6 +4831,10 @@ bool Game::combatChangeHealth(Creature* attacker, Creature* target, CombatDamage
 
 		int32_t realDamage = damage.primary.value + damage.secondary.value;
 		if (realDamage) {
+			for (CreatureEvent* creatureEvent : target->getCreatureEvents(CREATURE_EVENT_CHANGEHEALTH)) {
+				creatureEvent->executeChangeHealth(target, attacker, damage);
+			}
+
 			if (realDamage >= targetHealth) {
 				for (CreatureEvent* creatureEvent : target->getCreatureEvents(CREATURE_EVENT_PREPAREDEATH)) {
 					creatureEvent->executeOnPrepareDeath(target, attacker);
@@ -4912,7 +4883,7 @@ bool Game::combatChangeHealth(Creature* attacker, Creature* target, CombatDamage
 					if (tmpPlayer->getPosition().z == targetPos.z) {
 						if (tmpPlayer == attackerPlayer && attackerPlayer != targetPlayer) {
 							ss.str("");
-							ss << ucfirst(target->getNameDescription()) << " loses " << realDamage << " hitpoint" << (realDamage != 1 ? "s" : "") << " due to your attack.";
+							ss << ucfirst(target->getNameDescription()) << " loses " << realDamage << " hitpoint" << pluralString << " due to your attack.";
 							message.type = MSG_DAMAGE_DEALT;
 							message.text = ss.str();
 						} else if (tmpPlayer == targetPlayer) {
@@ -4958,23 +4929,26 @@ bool Game::combatChangeMana(Creature* attacker, Creature* target, int32_t manaCh
 			}
 		}
 
+		for (CreatureEvent* creatureEvent : target->getCreatureEvents(CREATURE_EVENT_CHANGEMANA)) {
+			creatureEvent->executeChangeMana(target, attacker, manaChange);
+		}
+
 		target->changeMana(manaChange);
 	} else {
 		const Position& targetPos = target->getPosition();
-
 		if (!target->isAttackable() || Combat::canDoCombat(attacker, target) != RET_NOERROR) {
 			addMagicEffect(targetPos, NM_ME_POFF);
 			return false;
 		}
 
-		Player* attackerPlayer = nullptr;
-
+		Player* attackerPlayer;
 		if (attacker) {
 			attackerPlayer = attacker->getPlayer();
+		} else {
+			attackerPlayer = nullptr;
 		}
 
 		Player* targetPlayer = target->getPlayer();
-
 		if (attackerPlayer && targetPlayer) {
 			if (g_config.getBoolean(ConfigManager::CANNOT_ATTACK_SAME_LOOKFEET) && attacker->defaultOutfit.lookFeet == target->defaultOutfit.lookFeet) {
 				return false;
@@ -4987,7 +4961,6 @@ bool Game::combatChangeMana(Creature* attacker, Creature* target, int32_t manaCh
 
 		int32_t manaLoss = std::min<int32_t>(target->getMana(), -manaChange);
 		BlockType_t blockType = target->blockHit(attacker, COMBAT_MANADRAIN, manaLoss);
-
 		if (blockType != BLOCK_NONE) {
 			addMagicEffect(targetPos, NM_ME_POFF);
 			return false;
@@ -4997,10 +4970,13 @@ bool Game::combatChangeMana(Creature* attacker, Creature* target, int32_t manaCh
 			return true;
 		}
 
+		for (CreatureEvent* creatureEvent : target->getCreatureEvents(CREATURE_EVENT_CHANGEMANA)) {
+			creatureEvent->executeChangeMana(target, attacker, manaLoss);
+		}
+
 		target->drainMana(attacker, manaLoss);
 
 		std::ostringstream ss;
-
 		if (!attacker) {
 			ss << ucfirst(target->getNameDescription()) << " loses " << manaLoss << " mana.";
 		} else if (attacker == target) {
@@ -5009,31 +4985,38 @@ bool Game::combatChangeMana(Creature* attacker, Creature* target, int32_t manaCh
 			ss << ucfirst(target->getNameDescription()) << " loses " << manaLoss << " mana blocking an attack by " << attacker->getNameDescription() << '.';
 		}
 
-		std::string message = ss.str();
+		std::string spectatorMessage = ss.str();
+
+		TextMessage message;
+		message.position = targetPos;
+		message.primary.value = manaLoss;
+		message.primary.color = TEXTCOLOR_BLUE;
 
 		SpectatorVec list;
 		getSpectators(list, targetPos, false, true);
 		for (Creature* spectator : list) {
 			Player* tmpPlayer = spectator->getPlayer();
 			if (tmpPlayer == attackerPlayer && attackerPlayer != targetPlayer) {
-				std::ostringstream tmpSs;
-				tmpSs << ucfirst(target->getNameDescription()) << " loses " << manaLoss << " mana blocking your attack.";
-				tmpPlayer->sendDamageMessage(MSG_DAMAGE_DEALT, tmpSs.str(), targetPos, manaLoss, TEXTCOLOR_BLUE);
+				ss.str("");
+				ss << ucfirst(target->getNameDescription()) << " loses " << manaLoss << " mana blocking your attack.";
+				message.type = MSG_DAMAGE_DEALT;
+				message.text = ss.str();
 			} else if (tmpPlayer == targetPlayer) {
-				std::ostringstream tmpSs;
-
+				ss.str("");
 				if (!attacker) {
-					tmpSs << "You lose " << manaLoss << " mana.";
+					ss << "You lose " << manaLoss << " mana.";
 				} else if (targetPlayer == attackerPlayer) {
-					tmpSs << "You lose " << manaLoss << " mana blocking an attack by yourself.";
+					ss << "You lose " << manaLoss << " mana blocking an attack by yourself.";
 				} else {
-					tmpSs << "You lose " << manaLoss << " mana blocking an attack by " << attacker->getNameDescription() << '.';
+					ss << "You lose " << manaLoss << " mana blocking an attack by " << attacker->getNameDescription() << '.';
 				}
-
-				tmpPlayer->sendDamageMessage(MSG_DAMAGE_RECEIVED, tmpSs.str(), targetPos, manaLoss, TEXTCOLOR_BLUE);
+				message.type = MSG_DAMAGE_RECEIVED;
+				message.text = ss.str();
 			} else {
-				tmpPlayer->sendDamageMessage(MSG_DAMAGE_OTHERS, message, targetPos, manaLoss, TEXTCOLOR_BLUE);
+				message.type = MSG_DAMAGE_OTHERS;
+				message.text = spectatorMessage;
 			}
+			tmpPlayer->sendTextMessage(message);
 		}
 	}
 
@@ -5437,7 +5420,7 @@ void Game::updatePremium(Account& account)
 		save = true;
 	}
 
-	if (save && !IOLoginData::getInstance()->saveAccount(account)) {
+	if (save && !IOLoginData::saveAccount(account)) {
 		std::cout << "> ERROR: Failed to save account: " << account.name << "!" << std::endl;
 	}
 }
@@ -5561,7 +5544,7 @@ void Game::loadMotdNum()
 	}
 }
 
-void Game::saveMotdNum()
+void Game::saveMotdNum() const
 {
 	Database* db = Database::getInstance();
 
@@ -5588,7 +5571,7 @@ void Game::checkPlayersRecord()
 	}
 }
 
-void Game::updatePlayersRecord()
+void Game::updatePlayersRecord() const
 {
 	Database* db = Database::getInstance();
 
@@ -5886,12 +5869,12 @@ bool Game::playerBrowseMarket(uint32_t playerId, uint16_t spriteId)
 		return false;
 	}
 
-	if (!it.ware) {
+	if (it.wareId == 0) {
 		return false;
 	}
 
-	const MarketOfferList& buyOffers = IOMarket::getInstance()->getActiveOffers(MARKETACTION_BUY, it.id);
-	const MarketOfferList& sellOffers = IOMarket::getInstance()->getActiveOffers(MARKETACTION_SELL, it.id);
+	const MarketOfferList& buyOffers = IOMarket::getActiveOffers(MARKETACTION_BUY, it.id);
+	const MarketOfferList& sellOffers = IOMarket::getActiveOffers(MARKETACTION_SELL, it.id);
 	player->sendMarketBrowseItem(it.id, buyOffers, sellOffers);
 	player->sendMarketDetail(it.id);
 	return true;
@@ -5908,8 +5891,8 @@ bool Game::playerBrowseMarketOwnOffers(uint32_t playerId)
 		return false;
 	}
 
-	const MarketOfferList& buyOffers = IOMarket::getInstance()->getOwnOffers(MARKETACTION_BUY, player->getGUID());
-	const MarketOfferList& sellOffers = IOMarket::getInstance()->getOwnOffers(MARKETACTION_SELL, player->getGUID());
+	const MarketOfferList& buyOffers = IOMarket::getOwnOffers(MARKETACTION_BUY, player->getGUID());
+	const MarketOfferList& sellOffers = IOMarket::getOwnOffers(MARKETACTION_SELL, player->getGUID());
 	player->sendMarketBrowseOwnOffers(buyOffers, sellOffers);
 	return true;
 }
@@ -5925,8 +5908,8 @@ bool Game::playerBrowseMarketOwnHistory(uint32_t playerId)
 		return false;
 	}
 
-	const HistoryMarketOfferList& buyOffers = IOMarket::getInstance()->getOwnHistory(MARKETACTION_BUY, player->getGUID());
-	const HistoryMarketOfferList& sellOffers = IOMarket::getInstance()->getOwnHistory(MARKETACTION_SELL, player->getGUID());
+	const HistoryMarketOfferList& buyOffers = IOMarket::getOwnHistory(MARKETACTION_BUY, player->getGUID());
+	const HistoryMarketOfferList& sellOffers = IOMarket::getOwnHistory(MARKETACTION_SELL, player->getGUID());
 	player->sendMarketBrowseOwnHistory(buyOffers, sellOffers);
 	return true;
 }
@@ -5959,18 +5942,27 @@ bool Game::playerCreateMarketOffer(uint32_t playerId, uint8_t type, uint16_t spr
 		return false;
 	}
 
-	const ItemType& it = Item::items.getItemIdByClientId(spriteId);
+	const ItemType& itt = Item::items.getItemIdByClientId(spriteId);
+	if (itt.id == 0) {
+		return false;
+	}
+
+	if (itt.wareId == 0) {
+		return false;
+	}
+
+	const ItemType& it = Item::items.getItemIdByClientId(itt.wareId);
 	if (it.id == 0) {
 		return false;
 	}
 
-	if (!it.ware) {
+	if (it.wareId == 0) {
 		return false;
 	}
 
 	const int32_t maxOfferCount = g_config.getNumber(ConfigManager::MAX_MARKET_OFFERS_AT_A_TIME_PER_PLAYER);
 	if (maxOfferCount > 0) {
-		const int32_t offerCount = IOMarket::getInstance()->getPlayerOfferCount(player->getGUID());
+		const int32_t offerCount = IOMarket::getPlayerOfferCount(player->getGUID());
 		if (offerCount == -1 || offerCount >= maxOfferCount) {
 			return false;
 		}
@@ -6011,7 +6003,7 @@ bool Game::playerCreateMarketOffer(uint32_t playerId, uint8_t type, uint16_t spr
 					continue;
 				}
 
-				if (item->getID() != it.id) {
+				if (item->getWareID() != it.wareId) {
 					continue;
 				}
 
@@ -6071,11 +6063,11 @@ bool Game::playerCreateMarketOffer(uint32_t playerId, uint8_t type, uint16_t spr
 		player->bankBalance -= totalPrice;
 	}
 
-	IOMarket::getInstance()->createOffer(player->getGUID(), (MarketAction_t)type, it.id, amount, price, anonymous);
+	IOMarket::createOffer(player->getGUID(), (MarketAction_t)type, it.id, amount, price, anonymous);
 
 	player->sendMarketEnter(player->getLastDepotId());
-	const MarketOfferList& buyOffers = IOMarket::getInstance()->getActiveOffers(MARKETACTION_BUY, it.id);
-	const MarketOfferList& sellOffers = IOMarket::getInstance()->getActiveOffers(MARKETACTION_SELL, it.id);
+	const MarketOfferList& buyOffers = IOMarket::getActiveOffers(MARKETACTION_BUY, it.id);
+	const MarketOfferList& sellOffers = IOMarket::getActiveOffers(MARKETACTION_SELL, it.id);
 	player->sendMarketBrowseItem(it.id, buyOffers, sellOffers);
 	return true;
 }
@@ -6091,12 +6083,12 @@ bool Game::playerCancelMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 		return false;
 	}
 
-	uint32_t offerId = IOMarket::getInstance()->getOfferIdByCounter(timestamp, counter);
+	uint32_t offerId = IOMarket::getOfferIdByCounter(timestamp, counter);
 	if (offerId == 0) {
 		return false;
 	}
 
-	MarketOfferEx offer = IOMarket::getInstance()->getOfferById(offerId);
+	MarketOfferEx offer = IOMarket::getOfferById(offerId);
 	if (offer.playerId != player->getGUID()) {
 		return false;
 	}
@@ -6142,7 +6134,7 @@ bool Game::playerCancelMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 		}
 	}
 
-	IOMarket::getInstance()->moveOfferToHistory(offerId, OFFERSTATE_CANCELLED);
+	IOMarket::moveOfferToHistory(offerId, OFFERSTATE_CANCELLED);
 	offer.amount = 0;
 	offer.timestamp += g_config.getNumber(ConfigManager::MARKET_OFFER_DURATION);
 	player->sendMarketCancelOffer(offer);
@@ -6164,12 +6156,12 @@ bool Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 		return false;
 	}
 
-	uint32_t offerId = IOMarket::getInstance()->getOfferIdByCounter(timestamp, counter);
+	uint32_t offerId = IOMarket::getOfferIdByCounter(timestamp, counter);
 	if (offerId == 0) {
 		return false;
 	}
 
-	MarketOfferEx offer = IOMarket::getInstance()->getOfferById(offerId);
+	MarketOfferEx offer = IOMarket::getOfferById(offerId);
 	if (amount > offer.amount) {
 		return false;
 	}
@@ -6239,7 +6231,7 @@ bool Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 		Player* buyerPlayer = getPlayerByGUID(offer.playerId);
 		if (!buyerPlayer) {
 			buyerPlayer = new Player(nullptr);
-			if (!IOLoginData::getInstance()->loadPlayerById(buyerPlayer, offer.playerId)) {
+			if (!IOLoginData::loadPlayerById(buyerPlayer, offer.playerId)) {
 				delete buyerPlayer;
 				return false;
 			}
@@ -6294,7 +6286,7 @@ bool Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 		}
 
 		if (buyerPlayer->isOffline()) {
-			IOLoginData::getInstance()->savePlayer(buyerPlayer);
+			IOLoginData::savePlayer(buyerPlayer);
 			delete buyerPlayer;
 		} else {
 			buyerPlayer->onReceiveMail();
@@ -6339,7 +6331,7 @@ bool Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 		if (sellerPlayer) {
 			sellerPlayer->bankBalance += totalPrice;
 		} else {
-			IOLoginData::getInstance()->increaseBankBalance(offer.playerId, totalPrice);
+			IOLoginData::increaseBankBalance(offer.playerId, totalPrice);
 		}
 
 		player->onReceiveMail();
@@ -6347,16 +6339,16 @@ bool Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 
 	const int32_t marketOfferDuration = g_config.getNumber(ConfigManager::MARKET_OFFER_DURATION);
 
-	IOMarket::getInstance()->appendHistory(player->getGUID(), (offer.type == MARKETACTION_BUY ? MARKETACTION_SELL : MARKETACTION_BUY), offer.itemId, amount, offer.price, offer.timestamp + marketOfferDuration, OFFERSTATE_ACCEPTEDEX);
+	IOMarket::appendHistory(player->getGUID(), (offer.type == MARKETACTION_BUY ? MARKETACTION_SELL : MARKETACTION_BUY), offer.itemId, amount, offer.price, offer.timestamp + marketOfferDuration, OFFERSTATE_ACCEPTEDEX);
 
-	IOMarket::getInstance()->appendHistory(offer.playerId, offer.type, offer.itemId, amount, offer.price, offer.timestamp + marketOfferDuration, OFFERSTATE_ACCEPTED);
+	IOMarket::appendHistory(offer.playerId, offer.type, offer.itemId, amount, offer.price, offer.timestamp + marketOfferDuration, OFFERSTATE_ACCEPTED);
 
 	offer.amount -= amount;
 
 	if (offer.amount == 0) {
-		IOMarket::getInstance()->deleteOffer(offerId);
+		IOMarket::deleteOffer(offerId);
 	} else {
-		IOMarket::getInstance()->acceptOffer(offerId, amount);
+		IOMarket::acceptOffer(offerId, amount);
 	}
 
 	player->sendMarketEnter(player->getLastDepotId());
@@ -6367,7 +6359,7 @@ bool Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 
 void Game::checkExpiredMarketOffers()
 {
-	const ExpiredMarketOfferList& expiredBuyOffers = IOMarket::getInstance()->getExpiredOffers(MARKETACTION_BUY);
+	const ExpiredMarketOfferList& expiredBuyOffers = IOMarket::getExpiredOffers(MARKETACTION_BUY);
 	for (const ExpiredMarketOffer& offer : expiredBuyOffers) {
 		uint64_t totalPrice = (uint64_t)offer.price * offer.amount;
 
@@ -6375,18 +6367,18 @@ void Game::checkExpiredMarketOffers()
 		if (player) {
 			player->bankBalance += totalPrice;
 		} else {
-			IOLoginData::getInstance()->increaseBankBalance(offer.playerId, totalPrice);
+			IOLoginData::increaseBankBalance(offer.playerId, totalPrice);
 		}
 
-		IOMarket::getInstance()->moveOfferToHistory(offer.id, OFFERSTATE_EXPIRED);
+		IOMarket::moveOfferToHistory(offer.id, OFFERSTATE_EXPIRED);
 	}
 
-	const ExpiredMarketOfferList& expiredSellOffers = IOMarket::getInstance()->getExpiredOffers(MARKETACTION_SELL);
+	const ExpiredMarketOfferList& expiredSellOffers = IOMarket::getExpiredOffers(MARKETACTION_SELL);
 	for (const ExpiredMarketOffer& offer : expiredSellOffers) {
 		Player* player = getPlayerByGUID(offer.playerId);
 		if (!player) {
 			player = new Player(nullptr);
-			if (!IOLoginData::getInstance()->loadPlayerById(player, offer.playerId)) {
+			if (!IOLoginData::loadPlayerById(player, offer.playerId)) {
 				delete player;
 				continue;
 			}
@@ -6427,11 +6419,11 @@ void Game::checkExpiredMarketOffers()
 		}
 
 		if (player->isOffline()) {
-			IOLoginData::getInstance()->savePlayer(player);
+			IOLoginData::savePlayer(player);
 			delete player;
 		}
 
-		IOMarket::getInstance()->moveOfferToHistory(offer.id, OFFERSTATE_EXPIRED);
+		IOMarket::moveOfferToHistory(offer.id, OFFERSTATE_EXPIRED);
 	}
 
 	int32_t checkExpiredMarketOffersEachMinutes = g_config.getNumber(ConfigManager::CHECK_EXPIRED_MARKET_OFFERS_EACH_MINUTES);
@@ -6507,17 +6499,6 @@ bool Game::playerAnswerModalWindow(uint32_t playerId, uint32_t modalWindowId, ui
 		}
 	}
 
-	return true;
-}
-
-bool Game::playerCancelWalk(uint32_t playerId)
-{
-	Player* player = getPlayerByID(playerId);
-	if (!player) {
-		return false;
-	}
-
-	player->sendCancelWalk();
 	return true;
 }
 

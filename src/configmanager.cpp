@@ -85,7 +85,6 @@ bool ConfigManager::load(const char *configfile)
 		m_confInteger[MARKET_OFFER_DURATION] = getGlobalNumber(L, "marketOfferDuration",  30 * 24 * 60 * 60);
 	}
 
-	m_confBoolean[ON_OR_OFF_CHARLIST] = booleanString(getGlobalString(L, "displayOnOrOffAtCharlist", "no"));
 	m_confBoolean[ALLOW_CHANGEOUTFIT] = booleanString(getGlobalString(L, "allowChangeOutfit", "yes"));
 	m_confBoolean[ONE_PLAYER_ON_ACCOUNT] = booleanString(getGlobalString(L, "onePlayerOnlinePerAccount", "yes"));
 	m_confBoolean[CANNOT_ATTACK_SAME_LOOKFEET] = booleanString(getGlobalString(L, "noDamageToSameLookfeet", "no"));
@@ -228,11 +227,10 @@ int32_t ConfigManager::getGlobalNumber(lua_State* _L, const std::string& _identi
 
 	int32_t val = (int32_t)lua_tonumber(_L, -1);
 	lua_pop(_L, 1);
-
 	return val;
 }
 
-std::string ConfigManager::getGlobalStringField (lua_State* _L, const std::string& _identifier, const int32_t _key, const std::string& _default)
+std::string ConfigManager::getGlobalStringField(lua_State* _L, const std::string& _identifier, const int32_t _key, const std::string& _default)
 {
 	lua_getglobal(_L, _identifier.c_str());
 

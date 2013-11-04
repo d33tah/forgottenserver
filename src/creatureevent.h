@@ -34,7 +34,9 @@ enum CreatureEventType_t {
 	CREATURE_EVENT_KILL,
 	CREATURE_EVENT_ADVANCE,
 	CREATURE_EVENT_MODALWINDOW,
-	CREATURE_EVENT_TEXTEDIT
+	CREATURE_EVENT_TEXTEDIT,
+	CREATURE_EVENT_CHANGEHEALTH,
+	CREATURE_EVENT_CHANGEMANA
 };
 
 class CreatureEvent;
@@ -46,8 +48,8 @@ class CreatureEvents : public BaseEvents
 		virtual ~CreatureEvents();
 
 		// global events
-		bool playerLogin(Player* player);
-		bool playerLogout(Player* player);
+		bool playerLogin(Player* player) const;
+		bool playerLogout(Player* player) const;
 		bool playerAdvance(Player* player, skills_t, uint32_t, uint32_t);
 
 		CreatureEvent* getEventByName(const std::string& name, bool forceLoaded = true);
@@ -97,6 +99,8 @@ class CreatureEvent : public Event
 		bool executeAdvance(Player* player, skills_t, uint32_t, uint32_t);
 		bool executeModalWindow(Player* player, uint32_t modalWindowId, uint8_t buttonId, uint8_t choiceId);
 		bool executeTextEdit(Player* player, Item* item, const std::string& text);
+		bool executeChangeHealth(Creature* creature, Creature* attacker, const CombatDamage& damage);
+		bool executeChangeMana(Creature* creature, Creature* attacker, int32_t manaChange);
 		//
 
 	protected:

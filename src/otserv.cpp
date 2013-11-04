@@ -27,7 +27,6 @@
 #include <cstring>
 #include <cerrno>
 #include <iostream>
-#include <iomanip>
 
 #include "networkmessage.h"
 #include "protocolgame.h"
@@ -57,7 +56,7 @@
 #include "protocolgame.h"
 #include "protocolold.h"
 #include "protocollogin.h"
-#include "status.h"
+#include "protocolstatus.h"
 #include "admin.h"
 #include "globalevent.h"
 #include "mounts.h"
@@ -67,8 +66,6 @@
 
 Dispatcher g_dispatcher;
 Scheduler g_scheduler;
-
-IPList serverIPs;
 
 extern AdminProtocolConfig* g_adminConfig;
 Ban g_bans;
@@ -221,22 +218,20 @@ void mainLoader(int argc, char* argv[], ServiceManager* services)
 		return;
 	}
 
-	std::cout << " MySQL " << db->getClientVersion() << std::endl;
+	std::cout << " MySQL " << Database::getClientVersion() << std::endl;
 
 	// run database manager
 	std::cout << ">> Running database manager" << std::endl;
 
-	DatabaseManager* dbManager = DatabaseManager::getInstance();
-	if (!dbManager->isDatabaseSetup()) {
-		startupErrorMessage("The database you have specified in config.lua is empty, please import the schema to the database.");
+	if (!DatabaseManager::isDatabaseSetup()) {
+		startupErrorMessage("The database you have specified in config.lua is empty, please import the schema.sql to your database.");
 		return;
 	}
 
-	dbManager->updateDatabase();
-	dbManager->checkTriggers();
-	dbManager->checkEncryption();
+	DatabaseManager::updateDatabase();
+	DatabaseManager::checkEncryption();
 
-	if (g_config.getBoolean(ConfigManager::OPTIMIZE_DATABASE) && !dbManager->optimizeTables()) {
+	if (g_config.getBoolean(ConfigManager::OPTIMIZE_DATABASE) && !DatabaseManager::optimizeTables()) {
 		std::cout << "> No tables were optimized." << std::endl;
 	}
 
@@ -327,7 +322,7 @@ void mainLoader(int argc, char* argv[], ServiceManager* services)
 
 	std::cout << ">> Loading map" << std::endl;
 
-	if (!g_game.loadMap(g_config.getString(ConfigManager::MAP_NAME))) {
+	if (!g_game.loadMainMap(g_config.getString(ConfigManager::MAP_NAME))) {
 		startupErrorMessage("Failed to load map");
 		return;
 	}
@@ -377,7 +372,7 @@ void mainLoader(int argc, char* argv[], ServiceManager* services)
 	}
 
 	Houses::getInstance().payHouses();
-	IOLoginData::getInstance()->updateHouseOwners();
+	IOLoginData::updateHouseOwners();
 	g_npcs.reload();
 
 	if (g_config.getBoolean(ConfigManager::MARKET_ENABLED)) {
@@ -386,43 +381,6 @@ void mainLoader(int argc, char* argv[], ServiceManager* services)
 	}
 
 	std::cout << ">> Loaded all modules, server starting up..." << std::endl;
-
-	std::pair<uint32_t, uint32_t> IpNetMask;
-	IpNetMask.first = inet_addr("127.0.0.1");
-	IpNetMask.second = 0xFFFFFFFF;
-	serverIPs.push_back(IpNetMask);
-
-	char szHostName[128];
-	if (gethostname(szHostName, 128) == 0) {
-		hostent* he = gethostbyname(szHostName);
-		if (he) {
-			unsigned char** addr = (unsigned char**)he->h_addr_list;
-			while (addr[0] != nullptr) {
-				IpNetMask.first = *(uint32_t*)(*addr);
-				IpNetMask.second = 0xFFFFFFFF;
-				serverIPs.push_back(IpNetMask);
-				addr++;
-			}
-		}
-	}
-
-	std::string ip = g_config.getString(ConfigManager::IP);
-
-	uint32_t resolvedIp = inet_addr(ip.c_str());
-	if (resolvedIp == INADDR_NONE) {
-		struct hostent* he = gethostbyname(ip.c_str());
-		if (!he) {
-			std::ostringstream ss;
-			ss << "ERROR: Cannot resolve " << ip << "!" << std::endl;
-			startupErrorMessage(ss.str());
-			return;
-		}
-		resolvedIp = *(uint32_t*)he->h_addr;
-	}
-
-	IpNetMask.first = resolvedIp;
-	IpNetMask.second = 0;
-	serverIPs.push_back(IpNetMask);
 
 #if !defined(WIN32) && !defined(__ROOT_PERMISSION__)
 	if (getuid() == 0 || geteuid() == 0) {
