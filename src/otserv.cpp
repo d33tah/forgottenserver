@@ -150,8 +150,13 @@ void mainLoader(int argc, char* argv[], ServiceManager* services)
 	std::cout << std::endl;
 
 	// read global config
-	std::cout << ">> Loading config" << std::endl;
-	if (!g_config.load()) {
+	const char *configfile;
+	if (argc > 1)
+		configfile = argv[1];
+	else
+		configfile = "config.lua";
+	std::cout << ">> Loading " << configfile << std::endl;
+	if (!g_config.load(configfile)) {
 		startupErrorMessage("Unable to load config.lua!");
 		return;
 	}

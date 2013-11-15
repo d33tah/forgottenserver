@@ -41,14 +41,15 @@ ConfigManager::~ConfigManager()
 	//
 }
 
-bool ConfigManager::load()
+bool ConfigManager::load(const char *configfile)
 {
 	lua_State* L = luaL_newstate();
 	if (!L) {
 		throw std::runtime_error("Failed to allocate memory");
 	}
 
-	if (luaL_dofile(L, "config.lua")) {
+	_configfile = (char *)configfile;
+	if (luaL_dofile(L, configfile)) {
 		std::cout << "[Error - ConfigManager::load] " << lua_tostring(L, -1) << std::endl;
 		lua_close(L);
 		return false;
@@ -150,7 +151,7 @@ bool ConfigManager::reload()
 		return false;
 	}
 
-	bool result = load();
+	bool result = load(_configfile);
 	if (transformToSHA1(getString(ConfigManager::MOTD)) != g_game.getMotdHash()) {
 		g_game.incrementMotdNum();
 	}

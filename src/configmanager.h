@@ -124,7 +124,7 @@ class ConfigManager
 			LAST_INTEGER_CONFIG /* this must be the last one */
 		};
 
-		bool load();
+		bool load(const char *configfile);
 		bool reload();
 
 		const std::string& getString(string_config_t _what) const;
@@ -133,6 +133,7 @@ class ConfigManager
 		bool setNumber(integer_config_t _what, int32_t _value);
 
 	private:
+		char *_configfile;
 		std::string getGlobalString(lua_State* _L, const std::string& _identifier, const std::string& _default = "");
 		int32_t getGlobalNumber(lua_State* _L, const std::string& _identifier, const int32_t _default = 0);
 		std::string getGlobalStringField(lua_State* _L, const std::string& _identifier, const int32_t _key, const std::string& _default = "");
