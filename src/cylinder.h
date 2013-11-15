@@ -20,9 +20,7 @@
 #ifndef __OTSERV_CYLINDER_H__
 #define __OTSERV_CYLINDER_H__
 
-#include <map>
-
-#include "definitions.h"
+#include "enums.h"
 #include "thing.h"
 
 class Item;
@@ -246,7 +244,7 @@ class VirtualCylinder : public Cylinder
 			return 1;
 		}
 		virtual std::string getDescription(int32_t lookDistance) const {
-			return "";
+			return std::string();
 		}
 
 		virtual bool isRemoved() const {

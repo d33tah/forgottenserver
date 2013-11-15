@@ -19,12 +19,10 @@
 
 #include "otpch.h"
 
-#include "definitions.h"
 #include "configmanager.h"
 #include "game.h"
 #include "tools.h"
 
-#include <iostream>
 #include <stdexcept>
 
 #if LUA_VERSION_NUM >= 502
@@ -43,15 +41,14 @@ ConfigManager::~ConfigManager()
 	//
 }
 
-bool ConfigManager::load(const char *configfile)
+bool ConfigManager::load()
 {
 	lua_State* L = luaL_newstate();
 	if (!L) {
 		throw std::runtime_error("Failed to allocate memory");
 	}
 
-	_configfile = (char *)configfile;
-	if (luaL_dofile(L, configfile)) {
+	if (luaL_dofile(L, "config.lua")) {
 		std::cout << "[Error - ConfigManager::load] " << lua_tostring(L, -1) << std::endl;
 		lua_close(L);
 		return false;
@@ -89,7 +86,6 @@ bool ConfigManager::load(const char *configfile)
 	m_confBoolean[ONE_PLAYER_ON_ACCOUNT] = booleanString(getGlobalString(L, "onePlayerOnlinePerAccount", "yes"));
 	m_confBoolean[CANNOT_ATTACK_SAME_LOOKFEET] = booleanString(getGlobalString(L, "noDamageToSameLookfeet", "no"));
 	m_confBoolean[AIMBOT_HOTKEY_ENABLED] = booleanString(getGlobalString(L, "hotkeyAimbotEnabled", "yes"));
-	m_confBoolean[SHOW_GAMEMASTERS_ONLINE] = booleanString(getGlobalString(L, "displayGamemastersWithOnlineCommand", "no"));
 	m_confBoolean[REMOVE_AMMO] = booleanString(getGlobalString(L, "removeAmmoWhenUsingDistanceWeapon", "yes"));
 	m_confBoolean[REMOVE_RUNE_CHARGES] = booleanString(getGlobalString(L, "removeChargesFromRunes", "yes"));
 	m_confBoolean[REMOVE_WEAPON_CHARGES] = booleanString(getGlobalString(L, "removeChargesFromWeapons", "yes"));
@@ -101,7 +97,6 @@ bool ConfigManager::load(const char *configfile)
 	m_confBoolean[REPLACE_KICK_ON_LOGIN] = booleanString(getGlobalString(L, "replaceKickOnLogin", "yes"));
 	m_confBoolean[OLD_CONDITION_ACCURACY] = booleanString(getGlobalString(L, "oldConditionAccuracy", "no"));
 	m_confBoolean[ALLOW_CLONES] = booleanString(getGlobalString(L, "allowClones", "no"));
-	m_confBoolean[MARKET_ENABLED] = booleanString(getGlobalString(L, "marketEnabled", "yes"));
 	m_confBoolean[MARKET_PREMIUM] = booleanString(getGlobalString(L, "premiumToCreateMarketOffer", "yes"));
 	m_confBoolean[STAMINA_SYSTEM] = booleanString(getGlobalString(L, "staminaSystem", "yes"));
 
@@ -155,7 +150,7 @@ bool ConfigManager::reload()
 		return false;
 	}
 
-	bool result = load(_configfile);
+	bool result = load();
 	if (transformToSHA1(getString(ConfigManager::MOTD)) != g_game.getMotdHash()) {
 		g_game.incrementMotdNum();
 	}

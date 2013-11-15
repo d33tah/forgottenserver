@@ -14,6 +14,6 @@ function onLogin(cid)
 	end
 	player:sendTextMessage(MESSAGE_STATUS_DEFAULT, loginStr)
 
-	registerCreatureEvent(cid, "PlayerDeath")
+	player:registerEvent("PlayerDeath")
 	return true
 end

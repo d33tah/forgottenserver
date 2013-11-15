@@ -20,8 +20,6 @@
 #ifndef _CONFIG_MANAGER_H
 #define _CONFIG_MANAGER_H
 
-#include <string>
-
 extern "C"
 {
 #include <lua.h>
@@ -40,26 +38,24 @@ class ConfigManager
 			CANNOT_ATTACK_SAME_LOOKFEET = 1,
 			ONE_PLAYER_ON_ACCOUNT = 2,
 			AIMBOT_HOTKEY_ENABLED = 3,
-			SHOW_GAMEMASTERS_ONLINE = 4,
-			REMOVE_AMMO = 5,
-			REMOVE_RUNE_CHARGES = 6,
-			REMOVE_WEAPON_CHARGES = 7,
-			EXPERIENCE_FROM_PLAYERS = 8,
-			SHUTDOWN_AT_SERVERSAVE = 9,
-			CLEAN_MAP_AT_SERVERSAVE = 10,
-			SERVERSAVE_ENABLED = 11,
-			FREE_PREMIUM = 12,
-			ADMIN_LOGS_ENABLED = 13,
-			SAVE_GLOBAL_STORAGE = 14,
-			REPLACE_KICK_ON_LOGIN = 15,
-			OLD_CONDITION_ACCURACY = 16,
-			FREE_MEMORY_AT_SHUTDOWN = 17,
-			ALLOW_CLONES = 18,
-			BIND_ONLY_GLOBAL_ADDRESS = 19,
-			OPTIMIZE_DATABASE = 20,
-			MARKET_ENABLED = 21,
-			MARKET_PREMIUM = 22,
-			STAMINA_SYSTEM = 23,
+			REMOVE_AMMO = 4,
+			REMOVE_RUNE_CHARGES = 5,
+			REMOVE_WEAPON_CHARGES = 6,
+			EXPERIENCE_FROM_PLAYERS = 7,
+			SHUTDOWN_AT_SERVERSAVE = 8,
+			CLEAN_MAP_AT_SERVERSAVE = 9,
+			SERVERSAVE_ENABLED = 10,
+			FREE_PREMIUM = 11,
+			ADMIN_LOGS_ENABLED = 12,
+			SAVE_GLOBAL_STORAGE = 13,
+			REPLACE_KICK_ON_LOGIN = 14,
+			OLD_CONDITION_ACCURACY = 15,
+			FREE_MEMORY_AT_SHUTDOWN = 16,
+			ALLOW_CLONES = 17,
+			BIND_ONLY_GLOBAL_ADDRESS = 18,
+			OPTIMIZE_DATABASE = 19,
+			MARKET_PREMIUM = 20,
+			STAMINA_SYSTEM = 21,
 			LAST_BOOLEAN_CONFIG /* this must be the last one */
 		};
 
@@ -128,7 +124,7 @@ class ConfigManager
 			LAST_INTEGER_CONFIG /* this must be the last one */
 		};
 
-		bool load(const char *configfile);
+		bool load();
 		bool reload();
 
 		const std::string& getString(string_config_t _what) const;
@@ -137,7 +133,6 @@ class ConfigManager
 		bool setNumber(integer_config_t _what, int32_t _value);
 
 	private:
-		char *_configfile;
 		std::string getGlobalString(lua_State* _L, const std::string& _identifier, const std::string& _default = "");
 		int32_t getGlobalNumber(lua_State* _L, const std::string& _identifier, const int32_t _default = 0);
 		std::string getGlobalStringField(lua_State* _L, const std::string& _identifier, const int32_t _key, const std::string& _default = "");

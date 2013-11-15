@@ -20,10 +20,6 @@
 #ifndef __OTSERV_BAN_H__
 #define __OTSERV_BAN_H__
 
-#include <boost/thread/recursive_mutex.hpp>
-#include <list>
-#include "player.h"
-
 struct BanInfo {
 	std::string bannedBy;
 	std::string reason;
@@ -45,8 +41,7 @@ class Ban
 
 	protected:
 		IpConnectMap ipConnectMap;
-
-		mutable boost::recursive_mutex banLock;
+		std::recursive_mutex lock;
 };
 
 class IOBan

@@ -25,8 +25,6 @@
 #include "tools.h"
 #include "combat.h"
 
-#include <utility>
-
 extern Game g_game;
 
 Condition::Condition(ConditionId_t _id, ConditionType_t _type, int32_t _ticks, bool _buff, uint32_t _subId) :
@@ -1323,7 +1321,7 @@ void ConditionDamage::endCondition(Creature* creature, ConditionEnd_t reason)
 
 void ConditionDamage::addCondition(Creature* creature, const Condition* addCondition)
 {
-	if (addCondition->getType() == conditionType) {	
+	if (addCondition->getType() == conditionType) {
 		if (updateCondition(addCondition)) {
 			const ConditionDamage& conditionDamage = static_cast<const ConditionDamage&>(*addCondition);
 

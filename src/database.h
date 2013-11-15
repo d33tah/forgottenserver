@@ -20,12 +20,7 @@
 #ifndef __OTSERV_DATABASE_H__
 #define __OTSERV_DATABASE_H__
 
-#include "definitions.h"
-
-#include <iostream>
-
 #include <boost/lexical_cast.hpp>
-#include <boost/thread/recursive_mutex.hpp>
 
 #include <mysql.h>
 
@@ -151,7 +146,7 @@ class Database
 
 		MYSQL* m_handle;
 
-		boost::recursive_mutex database_lock;
+		std::recursive_mutex database_lock;
 
 		bool m_connected;
 

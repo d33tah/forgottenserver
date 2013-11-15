@@ -19,7 +19,6 @@
 
 #include "otpch.h"
 
-#include "definitions.h"
 #include "item.h"
 #include "container.h"
 #include "teleport.h"
@@ -28,18 +27,12 @@
 #include "house.h"
 #include "game.h"
 #include "luascript.h"
-#include "configmanager.h"
-#include "weapons.h"
 #include "beds.h"
 
 #include "actions.h"
 #include "combat.h"
 
-#include <iostream>
-
 extern Game g_game;
-extern ConfigManager g_config;
-extern Weapons* g_weapons;
 
 Items Item::items;
 
@@ -639,110 +632,85 @@ bool Item::serializeAttr(PropWriteStream& propWriteStream) const
 	return true;
 }
 
-bool Item::hasProperty(enum ITEMPROPERTY prop) const
+bool Item::hasProperty(ITEMPROPERTY prop) const
 {
 	const ItemType& it = items[id];
 
 	switch (prop) {
 		case BLOCKSOLID:
-
 			if (it.blockSolid) {
 				return true;
 			}
-
 			break;
 
 		case MOVEABLE:
-
 			if (it.moveable && getUniqueId() == 0) {
 				return true;
 			}
-
 			break;
 
 		case HASHEIGHT:
-
 			if (it.hasHeight) {
 				return true;
 			}
-
 			break;
 
 		case BLOCKPROJECTILE:
-
 			if (it.blockProjectile) {
 				return true;
 			}
-
 			break;
 
 		case BLOCKPATH:
-
 			if (it.blockPathFind) {
 				return true;
 			}
-
 			break;
 
 		case ISVERTICAL:
-
 			if (it.isVertical) {
 				return true;
 			}
-
 			break;
 
 		case ISHORIZONTAL:
-
 			if (it.isHorizontal) {
 				return true;
 			}
-
 			break;
 
 		case IMMOVABLEBLOCKSOLID:
-
 			if (it.blockSolid && (!it.moveable || getUniqueId() != 0)) {
 				return true;
 			}
-
 			break;
 
 		case IMMOVABLEBLOCKPATH:
-
 			if (it.blockPathFind && (!it.moveable || getUniqueId() != 0)) {
 				return true;
 			}
-
 			break;
 
 		case SUPPORTHANGABLE:
-
 			if (it.isHorizontal || it.isVertical) {
 				return true;
 			}
-
 			break;
 
 		case IMMOVABLENOFIELDBLOCKPATH:
-
 			if (!it.isMagicField() && it.blockPathFind && (!it.moveable || getUniqueId() != 0)) {
 				return true;
 			}
-
 			break;
 
 		case NOFIELDBLOCKPATH:
-
 			if (!it.isMagicField() && it.blockPathFind) {
 				return true;
 			}
-
 			break;
 
 		default:
 			return false;
-			break;
 	}
 
 	return false;
@@ -1284,7 +1252,10 @@ std::string Item::getWeightDescription(double weight) const
 std::string Item::getWeightDescription() const
 {
 	double weight = getWeight();
-	return (weight > 0 ? getWeightDescription(weight) : "");
+	if (weight <= 0) {
+		return std::string();
+	}
+	return getWeightDescription(weight);
 }
 
 void Item::setUniqueId(uint16_t n)

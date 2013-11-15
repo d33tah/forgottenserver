@@ -19,17 +19,13 @@
 
 #include "otpch.h"
 
-#include "ext/pugixml.hpp"
-#include "pugicast.h"
-
 #include "chat.h"
-#include "configmanager.h"
-#include "player.h"
 #include "game.h"
-#include "iologindata.h"
+#include "pugicast.h"
+#include "player.h"
+#include "scheduler.h"
 
 extern Chat g_chat;
-extern ConfigManager g_config;
 extern Game g_game;
 
 PrivateChatChannel::PrivateChatChannel(uint16_t channelId, const std::string& channelName) :
@@ -139,10 +135,11 @@ bool ChatChannel::addUser(Player& player)
 		return false;
 	}
 
+	// TODO: Move to script when guild channels can be scripted
 	if (id == CHANNEL_GUILD) {
 		Guild* guild = player.getGuild();
 		if (guild && !guild->getMotd().empty()) {
-			g_scheduler.addEvent(createSchedulerTask(150, boost::bind(&Game::sendGuildMotd, &g_game, player.getID(), guild->getId())));
+			g_scheduler->addEvent(createSchedulerTask(150, std::bind(&Game::sendGuildMotd, &g_game, player.getID(), guild->getId())));
 		}
 	}
 
@@ -540,7 +537,7 @@ std::string Chat::getChannelName(const Player& player, uint16_t channelId)
 {
 	ChatChannel* channel = getChannel(player, channelId);
 	if (!channel) {
-		return "";
+		return std::string();
 	}
 	return channel->getName();
 }

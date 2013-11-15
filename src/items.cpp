@@ -27,16 +27,11 @@
 
 #include "pugicast.h"
 
-#include <iostream>
-#include <string>
-#include <vector>
-
 uint32_t Items::dwMajorVersion = 0;
 uint32_t Items::dwMinorVersion = 0;
 uint32_t Items::dwBuildNumber = 0;
 
 extern MoveEvents* g_moveEvents;
-extern Spells* g_spells;
 extern Weapons* g_weapons;
 
 ItemType::ItemType()

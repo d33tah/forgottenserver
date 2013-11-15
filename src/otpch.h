@@ -23,24 +23,27 @@
 
 #define __OTPCH_H__
 
-//#undef __USE_OTPCH__
-
 // Definitions should be global.
 #include "definitions.h"
 
 //boost
-#include <boost/config.hpp>
-#include <boost/shared_ptr.hpp>
-#include <boost/bind.hpp>
-#include <boost/function.hpp>
 #include <boost/tokenizer.hpp>
 #include <boost/asio.hpp>
 
 //std
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <functional>
+#include <iomanip>
+#include <iostream>
 #include <list>
-#include <vector>
 #include <map>
+#include <memory>
+#include <mutex>
+#include <sstream>
 #include <string>
+#include <vector>
 
 //pugixml
 #include "ext/pugixml.hpp"

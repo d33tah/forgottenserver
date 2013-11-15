@@ -20,19 +20,15 @@
 #ifndef __OTSERV_HOUSE_H__
 #define __OTSERV_HOUSE_H__
 
-#include <string>
-#include <list>
-#include <map>
-
 #include <regex>
 
-#include "definitions.h"
-#include "position.h"
+#include "container.h"
 #include "housetile.h"
-#include "player.h"
+#include "position.h"
 
 class House;
 class BedItem;
+class Player;
 
 class AccessList
 {

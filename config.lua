@@ -57,7 +57,6 @@ mapName = "forgotten"
 mapAuthor = "Komic"
 
 -- Market
-marketEnabled = "yes"
 marketOfferDuration = 30 * 24 * 60 * 60
 premiumToCreateMarketOffer = "yes"
 checkExpiredMarketOffersEachMinutes = 60
@@ -72,8 +71,6 @@ mysqlPort = 3306
 
 -- Misc.
 allowChangeOutfit = "yes"
-displayGamemastersWithOnlineCommand = "no"
-displayOnOrOffAtCharlist = "no"
 freePremium = "no"
 kickIdlePlayerAfterMinutes = 15
 maxMessageBuffer = 4

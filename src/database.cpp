@@ -22,8 +22,6 @@
 #include "configmanager.h"
 #include "database.h"
 
-#include <string>
-
 #include <errmsg.h>
 
 extern ConfigManager g_config;
@@ -298,7 +296,7 @@ bool DBResult::next()
 void DBInsert::setQuery(const std::string& query)
 {
 	m_query = query;
-	m_buf = "";
+	m_buf.clear();
 }
 
 bool DBInsert::addRow(const std::string& row)

@@ -6,6 +6,21 @@ FALSE = false
 LUA_ERROR = false
 LUA_NO_ERROR = true
 
+GAME_STATE_STARTUP = 0
+GAME_STATE_INIT = 1
+GAME_STATE_NORMAL = 2
+GAME_STATE_CLOSED = 3
+GAME_STATE_SHUTDOWN = 4
+GAME_STATE_CLOSING = 5
+GAME_STATE_MAINTAIN = 6
+
+CLIENTOS_LINUX = 1
+CLIENTOS_WINDOWS = 2
+CLIENTOS_FLASH = 3
+CLIENTOS_OTCLIENT_LINUX = 10
+CLIENTOS_OTCLIENT_WINDOWS = 11
+CLIENTOS_OTCLIENT_MAC = 12
+
 TILESTATE_NONE = 0
 TILESTATE_PROTECTIONZONE = 1
 TILESTATE_DEPRECATED_HOUSE = 2
@@ -589,31 +604,28 @@ PlayerFlag_IsAlwaysPremium = 37
 PlayerFlag_CanAnswerRuleViolations = 38
 
 configKeys = {
-	ON_OR_OFF_CHARLIST = 0,
-	ALLOW_CHANGEOUTFIT = 1,
-	CANNOT_ATTACK_SAME_LOOKFEET = 2,
-	ONE_PLAYER_ON_ACCOUNT = 3,
-	AIMBOT_HOTKEY_ENABLED = 4,
-	SHOW_GAMEMASTERS_ONLINE = 5,
-	REMOVE_AMMO = 6,
-	REMOVE_RUNE_CHARGES = 7,
-	REMOVE_WEAPON_CHARGES = 8,
-	EXPERIENCE_FROM_PLAYERS = 9,
-	SHUTDOWN_AT_SERVERSAVE = 10,
-	CLEAN_MAP_AT_SERVERSAVE = 11,
-	SERVERSAVE_ENABLED = 12,
-	FREE_PREMIUM = 13,
-	ADMIN_LOGS_ENABLED = 14,
-	SAVE_GLOBAL_STORAGE = 15,
-	REPLACE_KICK_ON_LOGIN = 16,
-	OLD_CONDITION_ACCURACY = 17,
-	FREE_MEMORY_AT_SHUTDOWN = 18,
-	ALLOW_CLONES = 19,
-	BIND_ONLY_GLOBAL_ADDRESS = 20,
-	OPTIMIZE_DATABASE = 21,
-	MARKET_ENABLED = 22,
-	MARKET_PREMIUM = 23,
-	STAMINA_SYSTEM = 24,
+	ALLOW_CHANGEOUTFIT = 0,
+	CANNOT_ATTACK_SAME_LOOKFEET = 1,
+	ONE_PLAYER_ON_ACCOUNT = 2,
+	AIMBOT_HOTKEY_ENABLED = 3,
+	REMOVE_AMMO = 4,
+	REMOVE_RUNE_CHARGES = 5,
+	REMOVE_WEAPON_CHARGES = 6,
+	EXPERIENCE_FROM_PLAYERS = 7,
+	SHUTDOWN_AT_SERVERSAVE = 8,
+	CLEAN_MAP_AT_SERVERSAVE = 9,
+	SERVERSAVE_ENABLED = 10,
+	FREE_PREMIUM = 11,
+	ADMIN_LOGS_ENABLED = 12,
+	SAVE_GLOBAL_STORAGE = 13,
+	REPLACE_KICK_ON_LOGIN = 14,
+	OLD_CONDITION_ACCURACY = 15,
+	FREE_MEMORY_AT_SHUTDOWN = 16,
+	ALLOW_CLONES = 17,
+	BIND_ONLY_GLOBAL_ADDRESS = 18,
+	OPTIMIZE_DATABASE = 19,
+	MARKET_PREMIUM = 20,
+	STAMINA_SYSTEM = 21,
 
 	MAP_NAME = 1,
 	HOUSE_RENT_PERIOD = 2,
@@ -961,6 +973,51 @@ function doForceSummonCreature(name, pos)
 	return creature
 end
 
+function Position.getNextPosition(self, direction, steps)
+	steps = steps or 1
+	if direction == WEST then
+		self.x = self.x - steps
+	elseif direction == EAST then
+		self.x = self.x + steps
+	elseif direction == NORTH then
+		self.y = self.y - steps
+	elseif direction == SOUTH then
+		self.y = self.y + steps
+	end
+end
+
+function Creature.getClosestFreePosition(self, position, extended)
+	if self:isPlayer(cid) and self:getAccountType() >= ACCOUNT_TYPE_GOD then
+		return position
+	end
+	
+	local usePosition = Position(position)
+	local tiles = { usePosition:getTile() }
+	local length = extended and 2 or 1
+	
+	local tile
+	for y = -length, length do
+		usePosition.y = position.y + y
+		for x = -length, length do
+			usePosition.x = position.x + x
+			if not(x == 0 and y == 0) then
+				tile = usePosition:getTile()
+				if tile then
+					tiles[#tiles + 1] = tile
+				end
+			end
+		end
+	end
+	
+	for i = 1, #tiles do
+		tile = tiles[i]
+		if tile:getCreatureCount() == 0 and not tile:hasProperty(CONST_PROP_BLOCKINGANDNOTMOVEABLE) then
+			return tile:getPosition()
+		end
+	end
+	return Position()
+end
+
 function Player.sendCancelMessage(self, message)
 	return self:sendTextMessage(MESSAGE_STATUS_SMALL, message)
 end
@@ -988,4 +1045,30 @@ function Player.feed(self, food)
 		self:addCondition(condition)
 	end
 	return true
+end
+
+function Player.isUsingOtClient(self)
+	return self:getClient().os >= CLIENTOS_OTCLIENT_LINUX
+end
+
+function Player.sendExtendedOpcode(self, opcode, buffer)
+	if not self:isUsingOtClient() then
+		return false
+	end
+	
+	local networkMessage = NetworkMessage()
+	networkMessage:addByte(0x32)
+	networkMessage:addByte(opcode)
+	networkMessage:addString(buffer)
+	networkMessage:sendToPlayer(self)
+	networkMessage:delete()
+	return true
+end
+
+string.split = function(str, sep)
+	local res = {}
+	for v in str:gmatch("([^" .. sep .. "]+)") do
+		res[#res + 1] = v
+	end
+	return res
 end

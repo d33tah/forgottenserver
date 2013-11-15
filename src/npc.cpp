@@ -19,29 +19,16 @@
 
 #include "otpch.h"
 
-#include "definitions.h"
 #include "npc.h"
 #include "game.h"
 #include "tools.h"
-#include "configmanager.h"
 #include "position.h"
-#include "spells.h"
 #include "player.h"
-
-#include <algorithm>
-#include <functional>
-#include <string>
-#include <sstream>
-#include <fstream>
-
-#include "ext/pugixml.hpp"
+#include "spawn.h"
 #include "pugicast.h"
-
 #include "luascript.h"
 
-extern ConfigManager g_config;
 extern Game g_game;
-extern Spells* g_spells;
 extern LuaEnvironment g_luaEnvironment;
 
 enum {
@@ -459,13 +446,13 @@ bool Npc::getRandomStep(Direction& dir)
 		dirList.push_back(WEST);
 	}
 
-	if (!dirList.empty()) {
-		std::random_shuffle(dirList.begin(), dirList.end());
-		dir = dirList[uniform_random(0, dirList.size() - 1)];
-		return true;
+	if (dirList.empty()) {
+		return false;
 	}
 
-	return false;
+	std::random_shuffle(dirList.begin(), dirList.end());
+	dir = dirList[uniform_random(0, dirList.size() - 1)];
+	return true;
 }
 
 void Npc::doMoveTo(const Position& target)
@@ -623,8 +610,7 @@ int32_t NpcScriptInterface::luaSelfGetPos(lua_State* L)
 	//selfGetPosition()
 	Npc* npc = getScriptEnv()->getNpc();
 	if (npc) {
-		Position pos = npc->getPosition();
-		pushPosition(L, pos);
+		pushPosition(L, npc->getPosition(), 0);
 	} else {
 		lua_pushnil(L);
 	}

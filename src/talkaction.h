@@ -20,8 +20,6 @@
 #ifndef __TALKACTION_H__
 #define __TALKACTION_H__
 
-#include <list>
-#include <string>
 #include "luascript.h"
 #include "baseevents.h"
 #include "const.h"
@@ -49,7 +47,8 @@ class TalkActions : public BaseEvents
 		virtual bool registerEvent(Event* event, const pugi::xml_node& node);
 		virtual void clear();
 
-		std::list<std::pair<std::string, TalkAction*>> wordsMap;
+		// TODO: Store TalkAction objects directly in the list instead of using pointers
+		std::list<TalkAction*> talkActions;
 
 		LuaScriptInterface m_scriptInterface;
 };
@@ -63,17 +62,21 @@ class TalkAction : public Event
 		virtual bool configureEvent(const pugi::xml_node& node);
 
 		std::string getWords() const {
-			return m_words;
+			return words;
+		}
+		char getSeparator() const {
+			return separator;
 		}
 
 		//scripting
-		bool executeSay(Creature* creature, const std::string& words, const std::string& param);
+		bool executeSay(const Player* player, const std::string& words, const std::string& param, SpeakClasses type) const;
 		//
 
 	protected:
 		virtual std::string getScriptEventName();
 
-		std::string m_words;
+		std::string words;
+		char separator;
 };
 
 #endif

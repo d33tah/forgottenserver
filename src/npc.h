@@ -31,9 +31,7 @@ class Player;
 class Npcs
 {
 	public:
-		Npcs() {}
-		~Npcs() {}
-		void reload();
+		static void reload();
 };
 
 class NpcScriptInterface : public LuaScriptInterface
@@ -215,6 +213,8 @@ class Npc : public Creature
 
 		NpcScriptInterface* getScriptInterface();
 
+		static uint32_t npcAutoID;
+
 	protected:
 		Npc(const std::string& _name);
 
@@ -266,8 +266,6 @@ class Npc : public Creature
 		bool floorChange;
 		bool attackable;
 		bool loaded;
-
-		static uint32_t npcAutoID;
 
 		static NpcScriptInterface* m_scriptInterface;
 

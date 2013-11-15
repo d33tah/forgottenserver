@@ -33,7 +33,6 @@
 
 extern Game g_game;
 extern Vocations g_vocations;
-extern MoveEvents* g_moveEvents;
 
 MoveEvents::MoveEvents() :
 	m_scriptInterface("MoveEvents Interface")
@@ -492,7 +491,7 @@ std::string MoveEvent::getScriptEventName()
 
 		default:
 			std::cout << "[Error - MoveEvent::getScriptEventName] Invalid event type" << std::endl;
-			return "";
+			return std::string();
 	}
 }
 

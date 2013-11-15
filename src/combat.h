@@ -25,8 +25,6 @@
 #include "map.h"
 #include "baseevents.h"
 
-#include <vector>
-
 class Condition;
 class Creature;
 class Item;
@@ -317,7 +315,7 @@ class Combat
 		}
 		void setPlayerCombatValues(formulaType_t _type, double _mina, double _minb, double _maxa, double _maxb);
 		void postCombatEffects(Creature* caster, const Position& pos) const {
-			Combat::postCombatEffects(caster, pos, params);
+			postCombatEffects(caster, pos, params);
 		}
 
 	protected:

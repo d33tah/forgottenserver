@@ -19,8 +19,6 @@
 
 #include "otpch.h"
 
-#include "definitions.h"
-
 #include "protocol.h"
 #include "scheduler.h"
 #include "connection.h"
@@ -56,13 +54,12 @@ void Protocol::onRecvMessage(NetworkMessage& msg)
 
 OutputMessage_ptr Protocol::getOutputBuffer(int32_t size)
 {
-	if (m_outputBuffer && NetworkMessage::max_body_length >= m_outputBuffer->getMessageLength() + size) {
+	if (m_outputBuffer && NetworkMessage::max_protocol_body_length >= m_outputBuffer->getMessageLength() + size) {
 		return m_outputBuffer;
 	} else if (m_connection) {
 		m_outputBuffer = OutputMessagePool::getInstance()->getOutputMessage(this);
 		return m_outputBuffer;
 	}
-
 	return OutputMessage_ptr();
 }
 
@@ -70,8 +67,8 @@ void Protocol::releaseProtocol()
 {
 	if (m_refCount > 0) {
 		//Reschedule it and try again.
-		g_scheduler.addEvent(createSchedulerTask(SCHEDULER_MINTICKS,
-		                     boost::bind(&Protocol::releaseProtocol, this)));
+		g_scheduler->addEvent(createSchedulerTask(SCHEDULER_MINTICKS,
+		                     std::bind(&Protocol::releaseProtocol, this)));
 	} else {
 		deleteProtocolTask();
 	}

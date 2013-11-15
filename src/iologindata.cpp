@@ -20,21 +20,14 @@
 #include "otpch.h"
 
 #include "iologindata.h"
-#include <algorithm>
-#include <functional>
 #include "item.h"
 #include "configmanager.h"
-#include "tools.h"
 #include "town.h"
-#include "definitions.h"
 #include "game.h"
 #include "vocation.h"
 #include "house.h"
-#include "ban.h"
-#include <iostream>
 
 extern ConfigManager g_config;
-extern Vocations g_vocations;
 extern Game g_game;
 
 Account IOLoginData::loadAccount(uint32_t accno)
@@ -743,7 +736,7 @@ bool IOLoginData::savePlayer(Player* player)
 	query << "`offlinetraining_time` = " << player->getOfflineTrainingTime() / 1000 << ',';
 	query << "`offlinetraining_skill` = " << player->getOfflineTrainingSkill() << ',';
 	query << "`stamina` = " << player->getStaminaMinutes() << ',';
-	
+
 	query << "`skill_fist` = " << player->skills[SKILL_FIST][SKILL_LEVEL] << ',';
 	query << "`skill_fist_tries` = " << player->skills[SKILL_FIST][SKILL_TRIES] << ',';
 	query << "`skill_club` = " << player->skills[SKILL_CLUB][SKILL_LEVEL] << ',';

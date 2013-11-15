@@ -18,16 +18,13 @@
  */
 
 #include "otpch.h"
-#include "enums.h"
-#include <iostream>
-#include <string>
-
-#include "databasemanager.h"
-#include "tools.h"
-
-#include "ban.h"
 
 #include "configmanager.h"
+#include "databasemanager.h"
+#include "enums.h"
+#include "luascript.h"
+#include "tools.h"
+
 extern ConfigManager g_config;
 
 bool DatabaseManager::optimizeTables()
@@ -145,7 +142,7 @@ void DatabaseManager::updateDatabase()
 			std::cout << "[Error - DatabaseManager::updateDatabase - Version: " << version << "] " << lua_tostring(L, -1) << std::endl;
 			break;
 		}
-		
+
 		if (!LuaScriptInterface::popBoolean(L)) {
 			LuaScriptInterface::resetScriptEnv();
 			break;
@@ -154,7 +151,7 @@ void DatabaseManager::updateDatabase()
 		version++;
 		std::cout << "> Database has been updated to version " << version << '.' << std::endl;
 		registerDatabaseConfig("db_version", version);
-		
+
 		LuaScriptInterface::resetScriptEnv();
 	} while (true);
 	lua_close(L);

@@ -19,19 +19,13 @@
 
 #include "otpch.h"
 
-#include "definitions.h"
-
 #include "ban.h"
-#include "iologindata.h"
-#include "configmanager.h"
-#include "tools.h"
 #include "database.h"
-
-extern ConfigManager g_config;
+#include "tools.h"
 
 bool Ban::acceptConnection(uint32_t clientip)
 {
-	boost::recursive_mutex::scoped_lock lockClass(banLock);
+	std::lock_guard<std::recursive_mutex> lockClass(lock);
 
 	uint64_t currentTime = OTSYS_TIME();
 
@@ -87,7 +81,7 @@ bool IOBan::isAccountBanned(uint32_t accountId, BanInfo& banInfo)
 		db->executeQuery(query.str());
 
 		query.str("");
-		query << "DELETE FROM `account_bans WHERE `account_id` = " << accountId;
+		query << "DELETE FROM `account_bans` WHERE `account_id` = " << accountId;
 		db->executeQuery(query.str());
 
 		db->freeResult(result);

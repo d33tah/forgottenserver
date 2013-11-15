@@ -35,10 +35,7 @@
 #include "guild.h"
 #include "groups.h"
 #include "town.h"
-
-#include <vector>
-#include <ctime>
-#include <algorithm>
+#include "mounts.h"
 
 class House;
 class NetworkMessage;
@@ -172,6 +169,7 @@ class Player : public Creature, public Cylinder
 		bool toggleMount(bool mount);
 		bool tameMount(uint8_t mountId);
 		bool untameMount(uint8_t mountId);
+		bool hasMount(const Mount* mount) const;
 		void dismount();
 
 		void sendFYIBox(const std::string& message) {
@@ -309,7 +307,6 @@ class Player : public Creature, public Cylinder
 			operatingSystem = clientos;
 		}
 
-		/*
 		uint16_t getProtocolVersion() const {
 			if (!client) {
 				return 0;
@@ -317,7 +314,6 @@ class Player : public Creature, public Cylinder
 
 			return client->getVersion();
 		}
-		*/
 
 		secureMode_t getSecureMode() const {
 			return secureMode;

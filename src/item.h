@@ -24,10 +24,7 @@
 #include "thing.h"
 #include "items.h"
 
-#include <iostream>
-#include <list>
 #include <deque>
-#include <vector>
 
 class Creature;
 class Player;
@@ -594,7 +591,7 @@ class Item : virtual public Thing
 		int32_t getWorth() const;
 		void getLight(LightInfo& lightInfo) const;
 
-		bool hasProperty(enum ITEMPROPERTY prop) const;
+		bool hasProperty(ITEMPROPERTY prop) const;
 		bool isBlocking() const {
 			return items[id].blockSolid;
 		}

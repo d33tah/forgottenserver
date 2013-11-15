@@ -19,28 +19,22 @@
 
 #include "otpch.h"
 
-#include "definitions.h"
-
-#include <string>
-#include <iostream>
-#include <algorithm>
-#include <cstdlib>
-
-#include "player.h"
-#include "iologindata.h"
+#include "beds.h"
 #include "chat.h"
-#include "house.h"
 #include "combat.h"
-#include "movement.h"
-#include "weapons.h"
-#include "town.h"
-#include "ban.h"
 #include "configmanager.h"
 #include "creatureevent.h"
-#include "beds.h"
-#include "mounts.h"
-#include "quests.h"
+#include "game.h"
+#include "house.h"
+#include "iologindata.h"
+#include "monster.h"
+#include "movement.h"
 #include "outputmessage.h"
+#include "player.h"
+#include "quests.h"
+#include "scheduler.h"
+#include "town.h"
+#include "weapons.h"
 
 extern ConfigManager g_config;
 extern Game g_game;
@@ -1757,7 +1751,7 @@ void Player::onCreatureMove(const Creature* creature, const Tile* newTile, const
 
 	if (hasFollowPath && (creature == followCreature || (creature == this && followCreature))) {
 		isUpdatingPath = false;
-		g_dispatcher.addTask(createTask(boost::bind(&Game::updateCreatureWalk, &g_game, getID())));
+		g_dispatcher->addTask(createTask(std::bind(&Game::updateCreatureWalk, &g_game, getID())));
 	}
 
 	if (creature != this) {
@@ -1926,7 +1920,7 @@ void Player::checkTradeState(const Item* item)
 void Player::setNextWalkActionTask(SchedulerTask* task)
 {
 	if (walkTaskEvent != 0) {
-		g_scheduler.stopEvent(walkTaskEvent);
+		g_scheduler->stopEvent(walkTaskEvent);
 		walkTaskEvent = 0;
 	}
 
@@ -1937,12 +1931,12 @@ void Player::setNextWalkActionTask(SchedulerTask* task)
 void Player::setNextWalkTask(SchedulerTask* task)
 {
 	if (nextStepEvent != 0) {
-		g_scheduler.stopEvent(nextStepEvent);
+		g_scheduler->stopEvent(nextStepEvent);
 		nextStepEvent = 0;
 	}
 
 	if (task) {
-		nextStepEvent = g_scheduler.addEvent(task);
+		nextStepEvent = g_scheduler->addEvent(task);
 		resetIdleTime();
 	}
 }
@@ -1950,12 +1944,12 @@ void Player::setNextWalkTask(SchedulerTask* task)
 void Player::setNextActionTask(SchedulerTask* task)
 {
 	if (actionTaskEvent != 0) {
-		g_scheduler.stopEvent(actionTaskEvent);
+		g_scheduler->stopEvent(actionTaskEvent);
 		actionTaskEvent = 0;
 	}
 
 	if (task) {
-		actionTaskEvent = g_scheduler.addEvent(task);
+		actionTaskEvent = g_scheduler->addEvent(task);
 		resetIdleTime();
 	}
 }
@@ -3656,7 +3650,7 @@ bool Player::setAttackedCreature(Creature* creature)
 	}
 
 	if (creature) {
-		g_dispatcher.addTask(createTask(boost::bind(&Game::checkCreatureAttack, &g_game, getID())));
+		g_dispatcher->addTask(createTask(std::bind(&Game::checkCreatureAttack, &g_game, getID())));
 	}
 	return true;
 }
@@ -3707,7 +3701,7 @@ void Player::doAttacking(uint32_t interval)
 				result = weapon->useWeapon(this, tool, attackedCreature);
 			} else if (!canDoAction()) {
 				uint32_t delay = getNextActionTime();
-				SchedulerTask* task = createSchedulerTask(delay, boost::bind(&Game::checkCreatureAttack,
+				SchedulerTask* task = createSchedulerTask(delay, std::bind(&Game::checkCreatureAttack,
 				                      &g_game, getID()));
 				setNextActionTask(task);
 			} else if (!hasCondition(CONDITION_EXHAUST_COMBAT) || !weapon->hasExhaustion()) {
@@ -3773,7 +3767,7 @@ void Player::onWalkAborted()
 void Player::onWalkComplete()
 {
 	if (walkTask) {
-		walkTaskEvent = g_scheduler.addEvent(walkTask);
+		walkTaskEvent = g_scheduler->addEvent(walkTask);
 		walkTask = nullptr;
 	}
 }
@@ -4043,7 +4037,7 @@ bool Player::onKilledCreature(Creature* target, bool lastHit/* = true*/)
 			targetPlayer->setDropLoot(false);
 			targetPlayer->setLossSkill(false);
 		} else if (!hasFlag(PlayerFlag_NotGainInFight) && !isPartner(targetPlayer)) {
-			if (!Combat::isInPvpZone(this, targetPlayer) && hasAttacked(targetPlayer) && !isGuildMate(targetPlayer) && targetPlayer != this) {
+			if (!Combat::isInPvpZone(this, targetPlayer) && hasAttacked(targetPlayer) && !targetPlayer->hasAttacked(this) && !isGuildMate(targetPlayer) && targetPlayer != this) {
 				if (targetPlayer->getSkull() == SKULL_NONE && !isInWar(targetPlayer)) {
 					unjustified = true;
 					addUnjustifiedDead(targetPlayer);
@@ -4701,7 +4695,7 @@ bool Player::toggleMount(bool mount)
 			return false;
 		}
 
-		if (!currentMount->isTamed(this)) {
+		if (!hasMount(currentMount)) {
 			setCurrentMount(0);
 			sendOutfitWindow();
 			return false;
@@ -4782,6 +4776,26 @@ bool Player::untameMount(uint8_t mountId)
 	}
 
 	return true;
+}
+
+bool Player::hasMount(const Mount* mount) const
+{
+	if (isAccessPlayer()) {
+		return true;
+	}
+
+	if (mount->premium && !isPremium()) {
+		return false;
+	}
+
+	uint8_t tmpId = mount->id - 1;
+
+	int32_t value;
+	if (!getStorageValue(PSTRG_MOUNTS_RANGE_START + (tmpId / 31), value)) {
+		return false;
+	}
+
+	return ((1 << (tmpId % 31)) & value) != 0;
 }
 
 void Player::dismount()

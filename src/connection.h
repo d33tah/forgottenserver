@@ -20,36 +20,23 @@
 #ifndef __OTSERV_CONNECTION_H__
 #define __OTSERV_CONNECTION_H__
 
-#include "definitions.h"
-
-#include <set>
-
-#include <boost/asio.hpp>
-
-#include <boost/utility.hpp>
-#include <boost/shared_ptr.hpp>
-#include <boost/thread.hpp>
-#include <boost/enable_shared_from_this.hpp>
+#include <unordered_set>
 
 #include "networkmessage.h"
 
 class Protocol;
 class OutputMessage;
-typedef boost::shared_ptr<OutputMessage> OutputMessage_ptr;
+typedef std::shared_ptr<OutputMessage> OutputMessage_ptr;
 class Connection;
-typedef boost::shared_ptr<Connection> Connection_ptr;
+typedef std::shared_ptr<Connection> Connection_ptr;
 class ServiceBase;
-typedef boost::shared_ptr<ServiceBase> Service_ptr;
+typedef std::shared_ptr<ServiceBase> Service_ptr;
 class ServicePort;
-typedef boost::shared_ptr<ServicePort> ServicePort_ptr;
+typedef std::shared_ptr<ServicePort> ServicePort_ptr;
 
 class ConnectionManager
 {
 	public:
-		~ConnectionManager() {
-			closeAll();
-		}
-
 		static ConnectionManager* getInstance() {
 			static ConnectionManager instance;
 			return &instance;
@@ -61,20 +48,22 @@ class ConnectionManager
 		void closeAll();
 
 	protected:
-		ConnectionManager() {
-		}
+		ConnectionManager() {}
 
-		// TODO: Use unordered_set (we need to specify a hash function)
-		std::set<Connection_ptr> m_connections;
-		boost::recursive_mutex m_connectionManagerLock;
+		std::unordered_set<Connection_ptr> m_connections;
+		std::recursive_mutex m_connectionManagerLock;
 };
 
-class Connection : public boost::enable_shared_from_this<Connection>, boost::noncopyable
+class Connection : public std::enable_shared_from_this<Connection>
 {
 	public:
 #ifdef __ENABLE_SERVER_DIAGNOSTIC__
 		static uint32_t connectionCount;
 #endif
+
+		// non-copyable
+		Connection(const Connection&) = delete;
+		Connection& operator=(const Connection&) = delete;
 
 		enum { write_timeout = 30 };
 		enum { read_timeout = 30 };
@@ -90,11 +79,11 @@ class Connection : public boost::enable_shared_from_this<Connection>, boost::non
 		Connection(boost::asio::ip::tcp::socket* socket,
 		           boost::asio::io_service& io_service,
 		           ServicePort_ptr service_port) :
-			m_socket(socket),
 			m_readTimer(io_service),
 			m_writeTimer(io_service),
-			m_io_service(io_service),
-			m_service_port(service_port) {
+			m_service_port(service_port),
+			m_socket(socket),
+			m_io_service(io_service) {
 			m_refCount = 0;
 			m_protocol = nullptr;
 			m_pendingWrite = 0;
@@ -149,8 +138,8 @@ class Connection : public boost::enable_shared_from_this<Connection>, boost::non
 		void handleReadError(const boost::system::error_code& error);
 		void handleWriteError(const boost::system::error_code& error);
 
-		static void handleReadTimeout(boost::weak_ptr<Connection> weak_conn, const boost::system::error_code& error);
-		static void handleWriteTimeout(boost::weak_ptr<Connection> weak_conn, const boost::system::error_code& error);
+		static void handleReadTimeout(std::weak_ptr<Connection> weak_conn, const boost::system::error_code& error);
+		static void handleWriteTimeout(std::weak_ptr<Connection> weak_conn, const boost::system::error_code& error);
 
 		void closeConnectionTask();
 		void deleteConnectionTask();
@@ -162,26 +151,30 @@ class Connection : public boost::enable_shared_from_this<Connection>, boost::non
 		void internalSend(OutputMessage_ptr msg);
 
 		NetworkMessage m_msg;
-		boost::asio::ip::tcp::socket* m_socket;
+
 		boost::asio::deadline_timer m_readTimer;
 		boost::asio::deadline_timer m_writeTimer;
-		boost::asio::io_service& m_io_service;
+
+		std::recursive_mutex m_connectionLock;
+
 		ServicePort_ptr m_service_port;
+
+		boost::asio::ip::tcp::socket* m_socket;
+		Protocol* m_protocol;
+		boost::asio::io_service& m_io_service;
+
+		time_t m_timeConnected;
+		uint32_t m_packetsSent;
+		uint32_t m_refCount;
+		int32_t m_pendingWrite;
+		int32_t m_pendingRead;
+		ConnectionState_t m_connectionState;
+
 		bool m_receivedFirst;
 		bool m_writeError;
 		bool m_readError;
 
-		int32_t m_pendingWrite;
-		int32_t m_pendingRead;
-		ConnectionState_t m_connectionState;
-		uint32_t m_refCount;
 		static bool m_logError;
-		boost::recursive_mutex m_connectionLock;
-
-		time_t m_timeConnected;
-		uint32_t m_packetsSent;
-
-		Protocol* m_protocol;
 };
 
 #endif

@@ -19,33 +19,16 @@
 
 #include "otpch.h"
 
-#include "definitions.h"
-
-#include <string>
-#include <map>
-#include <algorithm>
-
-#include <boost/config.hpp>
-#include <boost/bind.hpp>
-
 #include "iomap.h"
-
 #include "iomapserialize.h"
-
-#include <cstdio>
-
 #include "items.h"
 #include "map.h"
 #include "tile.h"
 #include "combat.h"
 #include "creature.h"
-
-#include "player.h"
-#include "configmanager.h"
 #include "game.h"
 
 extern Game g_game;
-extern ConfigManager g_config;
 
 Map::Map()
 {

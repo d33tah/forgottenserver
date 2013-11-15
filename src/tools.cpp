@@ -19,14 +19,11 @@
 
 #include "otpch.h"
 
-#include "definitions.h"
+#include <cctype>
+#include <random>
 
 #include "tools.h"
 #include "configmanager.h"
-
-#include <random>
-
-#include <cctype>
 
 extern ConfigManager g_config;
 

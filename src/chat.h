@@ -20,14 +20,10 @@
 #ifndef __OTSERV_CHAT_H__
 #define __OTSERV_CHAT_H__
 
-#include <map>
-#include <list>
-#include <string>
-
 #include "const.h"
-#include "definitions.h"
-#include "party.h"
+#include "luascript.h"
 
+class Party;
 class Player;
 
 typedef std::map<uint32_t, Player*> UsersMap;

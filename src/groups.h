@@ -20,10 +20,6 @@
 #ifndef __GROUPS_H__
 #define __GROUPS_H__
 
-#include <cstdint>
-#include <string>
-#include <vector>
-
 struct Group {
 	std::string name;
 	uint64_t flags;

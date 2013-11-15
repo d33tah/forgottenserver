@@ -20,16 +20,9 @@
 #ifndef __OTSERV_TOOLS_H__
 #define __OTSERV_TOOLS_H__
 
-#include "definitions.h"
 #include "position.h"
 #include "const.h"
 #include "enums.h"
-
-#include <string>
-#include <algorithm>
-
-#include <boost/lexical_cast.hpp>
-#include <boost/tokenizer.hpp>
 
 typedef boost::tokenizer<boost::char_separator<char>> Tokenizer;
 
@@ -99,5 +92,10 @@ itemAttrTypes stringToItemAttribute(const std::string& str);
 #if !defined(_MSC_VER) || _MSC_VER < 1800
 double round(double v);
 #endif
+
+inline int64_t OTSYS_TIME()
+{
+	return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
 
 #endif

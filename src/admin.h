@@ -75,9 +75,7 @@
 //		message(string)
 //
 
-#include "player.h"
-#include "logger.h"
-#include <string>
+#include "protocol.h"
 
 class NetworkMessage;
 class RSA;

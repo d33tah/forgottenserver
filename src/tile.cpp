@@ -19,14 +19,8 @@
 
 #include "otpch.h"
 
-#include "definitions.h"
-
-#include <string>
-#include <iostream>
-
 #include <boost/range/adaptor/reversed.hpp>
 
-#include "definitions.h"
 #include "tile.h"
 #include "game.h"
 #include "player.h"
@@ -36,6 +30,7 @@
 #include "mailbox.h"
 #include "combat.h"
 #include "movement.h"
+#include "monster.h"
 
 extern Game g_game;
 extern MoveEvents* g_moveEvents;
@@ -631,8 +626,7 @@ ReturnValue Tile::__queryAdd(int32_t index, const Thing* thing, uint32_t count,
 
 			if (monster->canPushCreatures() && !monster->isSummon()) {
 				if (creatures) {
-					for (uint32_t i = 0; i < creatures->size(); ++i) {
-						Creature* tileCreature = creatures->at(i);
+					for (Creature* tileCreature : *creatures) {
 						if (tileCreature->getPlayer() && tileCreature->getPlayer()->isInGhostMode()) {
 							continue;
 						}

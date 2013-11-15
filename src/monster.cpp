@@ -19,20 +19,15 @@
 
 #include "otpch.h"
 
-#include <vector>
-#include <string>
-#include <algorithm>
-
 #include "monster.h"
 #include "monsters.h"
 #include "game.h"
 #include "spells.h"
 #include "combat.h"
 #include "spawn.h"
-#include "configmanager.h"
+#include "tasks.h"
 
 extern Game g_game;
-extern ConfigManager g_config;
 extern Monsters g_monsters;
 
 int32_t Monster::despawnRange;
@@ -168,7 +163,7 @@ void Monster::onCreatureAppear(const Creature* creature, bool isLogin)
 
 		LuaScriptInterface::pushUserdata<Creature>(L, const_cast<Creature*>(creature));
 		LuaScriptInterface::setCreatureMetatable(L, -1, creature);
-		
+
 		if (scriptInterface->callFunction(2)) {
 			return;
 		}
@@ -633,7 +628,7 @@ BlockType_t Monster::blockHit(Creature* attacker, CombatType_t combatType, int32
 }
 
 
-bool Monster::isTarget(Creature* creature) const
+bool Monster::isTarget(const Creature* creature) const
 {
 	if (creature->isRemoved() || !creature->isAttackable() ||
 	        creature->getZone() == ZONE_PROTECTION || !canSeeCreature(creature)) {
@@ -660,8 +655,8 @@ bool Monster::selectTarget(Creature* creature)
 
 	if (isHostile() || isSummon()) {
 		if (setAttackedCreature(creature) && !isSummon()) {
-			g_dispatcher.addTask(createTask(
-			                         boost::bind(&Game::checkCreatureAttack, &g_game, getID())));
+			g_dispatcher->addTask(createTask(
+			                         std::bind(&Game::checkCreatureAttack, &g_game, getID())));
 		}
 	}
 

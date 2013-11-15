@@ -21,32 +21,7 @@
 
 #include "mounts.h"
 
-#include "ext/pugixml.hpp"
 #include "pugicast.h"
-
-bool Mount::isTamed(Player* player) const
-{
-	if (!player) {
-		return false;
-	}
-
-	if (player->isAccessPlayer()) {
-		return true;
-	}
-
-	if (premium && !player->isPremium()) {
-		return false;
-	}
-
-	uint8_t tmpId = id - 1;
-
-	int32_t value;
-	if (!player->getStorageValue(PSTRG_MOUNTS_RANGE_START + (tmpId / 31), value)) {
-		return false;
-	}
-
-	return ((1 << (tmpId % 31)) & value) != 0;
-}
 
 bool Mounts::reload()
 {

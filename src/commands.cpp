@@ -19,11 +19,7 @@
 
 #include "otpch.h"
 
-#include <string>
 #include <fstream>
-#include <utility>
-#include <cstring>
-#include <cerrno>
 
 #include "commands.h"
 #include "player.h"
@@ -43,10 +39,11 @@
 #include "spells.h"
 #include "weapons.h"
 #include "raids.h"
-#include "chat.h"
 #include "quests.h"
 #include "mounts.h"
 #include "globalevent.h"
+#include "monster.h"
+#include "scheduler.h"
 #ifdef __ENABLE_SERVER_DIAGNOSTIC__
 #include "outputmessage.h"
 #include "connection.h"
@@ -60,36 +57,24 @@
 extern ConfigManager g_config;
 extern Actions* g_actions;
 extern Monsters g_monsters;
-extern Npcs g_npcs;
 extern TalkActions* g_talkActions;
 extern MoveEvents* g_moveEvents;
 extern Spells* g_spells;
 extern Weapons* g_weapons;
 extern Game g_game;
-extern Chat g_chat;
 extern CreatureEvents* g_creatureEvents;
 extern GlobalEvents* g_globalEvents;
 
 s_defcommands Commands::defined_commands[] = {
 	//admin commands
 	{"/s", &Commands::placeNpc},
-	{"/m", &Commands::placeMonster},
 	{"/summon", &Commands::placeSummon},
-	{"/B", &Commands::broadcastMessage},
-	{"/c", &Commands::teleportHere},
 	{"/i", &Commands::createItemById},
 	{"/n", &Commands::createItemByName},
 	{"/reload", &Commands::reloadInfo},
-	{"/goto", &Commands::teleportTo},
 	{"/info", &Commands::getInfo},
-	{"/closeserver", &Commands::closeServer},
-	{"/openserver", &Commands::openServer},
-	{"/a", &Commands::teleportNTiles},
 	{"/kick", &Commands::kickPlayer},
 	{"/owner", &Commands::setHouseOwner},
-	{"/town", &Commands::teleportToTown},
-	{"/pos", &Commands::showPosition},
-	{"/r", &Commands::removeThing},
 	{"/newtype", &Commands::newType},
 	{"/newitem", &Commands::newItem},
 	{"/hide", &Commands::hide},
@@ -103,10 +88,8 @@ s_defcommands Commands::defined_commands[] = {
 	{"/serverdiag", &Commands::serverDiag},
 
 	// player commands - TODO: make them talkactions
-	{"!online", &Commands::whoIsOnline},
 	{"!buyhouse", &Commands::buyHouse},
-	{"!sellhouse", &Commands::sellHouse},
-	{"!serverinfo", &Commands::serverInfo}
+	{"!sellhouse", &Commands::sellHouse}
 };
 
 Commands::Commands()
@@ -306,26 +289,6 @@ void Commands::placeNpc(Player* player, const std::string& cmd, const std::strin
 	}
 }
 
-void Commands::placeMonster(Player* player, const std::string& cmd, const std::string& param)
-{
-	Monster* monster = Monster::createMonster(param);
-	if (!monster) {
-		player->sendCancelMessage(RET_NOTPOSSIBLE);
-		g_game.addMagicEffect(player->getPosition(), NM_ME_POFF);
-		return;
-	}
-
-	// Place the monster
-	if (g_game.placeCreature(monster, player->getPosition())) {
-		g_game.addMagicEffect(monster->getPosition(), NM_ME_TELEPORT);
-		g_game.addMagicEffect(player->getPosition(), NM_ME_MAGIC_BLOOD);
-	} else {
-		delete monster;
-		player->sendCancelMessage(RET_NOTENOUGHROOM);
-		g_game.addMagicEffect(player->getPosition(), NM_ME_POFF);
-	}
-}
-
 void Commands::placeSummon(Player* player, const std::string& cmd, const std::string& param)
 {
 	Monster* monster = Monster::createMonster(param);
@@ -344,30 +307,6 @@ void Commands::placeSummon(Player* player, const std::string& cmd, const std::st
 		g_game.addMagicEffect(player->getPosition(), NM_ME_POFF);
 	} else {
 		g_game.addMagicEffect(monster->getPosition(), NM_ME_TELEPORT);
-	}
-}
-
-void Commands::broadcastMessage(Player* player, const std::string& cmd, const std::string& param)
-{
-	g_game.playerBroadcastMessage(player, param);
-}
-
-void Commands::teleportHere(Player* player, const std::string& cmd, const std::string& param)
-{
-	Creature* paramCreature = g_game.getCreatureByName(param);
-	if (paramCreature) {
-		Position oldPosition = paramCreature->getPosition();
-		Position newPosition = g_game.getClosestFreeTile(player, paramCreature, player->getPosition(), false);
-		if (newPosition.x == 0) {
-			std::ostringstream ss;
-			ss << "You can not teleport " << paramCreature->getName() << std::endl;
-			player->sendCancel(ss.str());
-		} else if (g_game.internalTeleport(paramCreature, newPosition) == RET_NOERROR) {
-			g_game.addMagicEffect(oldPosition, NM_ME_POFF, paramCreature->isInGhostMode());
-			g_game.addMagicEffect(newPosition, NM_ME_TELEPORT, paramCreature->isInGhostMode());
-		}
-	} else {
-		player->sendCancel("A creature with that name could not be found.");
 	}
 }
 
@@ -476,7 +415,7 @@ void Commands::reloadInfo(Player* player, const std::string& cmd, const std::str
 		g_moveEvents->reload();
 		player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, "Reloaded movements.");
 	} else if (tmpParam == "npc" || tmpParam == "npcs") {
-		g_npcs.reload();
+		Npcs::reload();
 		player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, "Reloaded npcs.");
 	} else if (tmpParam == "raid" || tmpParam == "raids") {
 		Raids::getInstance()->reload();
@@ -507,46 +446,6 @@ void Commands::reloadInfo(Player* player, const std::string& cmd, const std::str
 		player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, "Reloaded globalevents.");
 	} else {
 		player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, "Reload type not found.");
-	}
-}
-
-void Commands::teleportToTown(Player* player, const std::string& cmd, const std::string& param)
-{
-	Town* town = Towns::getInstance().getTown(param);
-	if (town) {
-		Position oldPosition = player->getPosition();
-		Position newPosition = g_game.getClosestFreeTile(player, 0, town->getTemplePosition(), true);
-		if (oldPosition != newPosition) {
-			if (newPosition.x == 0) {
-				player->sendCancel("You can not teleport there.");
-			} else if (g_game.internalTeleport(player, newPosition) == RET_NOERROR) {
-				g_game.addMagicEffect(oldPosition, NM_ME_POFF, player->isInGhostMode());
-				g_game.addMagicEffect(newPosition, NM_ME_TELEPORT, player->isInGhostMode());
-			}
-		}
-	} else {
-		player->sendCancel("Could not find the town.");
-	}
-}
-
-void Commands::teleportTo(Player* player, const std::string& cmd, const std::string& param)
-{
-	Creature* paramCreature = g_game.getCreatureByName(param);
-
-	if (paramCreature) {
-		Position oldPosition = player->getPosition();
-		Position newPosition = g_game.getClosestFreeTile(player, 0, paramCreature->getPosition(), true);
-		if (newPosition.x > 0) {
-			if (g_game.internalTeleport(player, newPosition) == RET_NOERROR) {
-				bool ghostMode = player->isInGhostMode() || paramCreature->isInGhostMode();
-				g_game.addMagicEffect(oldPosition, NM_ME_POFF, ghostMode);
-				g_game.addMagicEffect(player->getPosition(), NM_ME_TELEPORT, ghostMode);
-			}
-		} else {
-			std::ostringstream ss;
-			ss << "You can not teleport to " << paramCreature->getName() << '.';
-			player->sendCancel(ss.str());
-		}
 	}
 }
 
@@ -598,60 +497,6 @@ void Commands::getInfo(Player* player, const std::string& cmd, const std::string
 
 			ss << '.';
 			player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, ss.str());
-		}
-	}
-}
-
-void Commands::closeServer(Player* player, const std::string& cmd, const std::string& param)
-{
-	if (param == "shutdown") {
-		g_game.setGameState(GAME_STATE_SHUTDOWN);
-	} else {
-		g_game.setGameState(GAME_STATE_CLOSED);
-		player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, "Server is now closed.");
-	}
-}
-
-void Commands::openServer(Player* player, const std::string& cmd, const std::string& param)
-{
-	g_game.setGameState(GAME_STATE_NORMAL);
-	player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, "Server is now open.");
-}
-
-void Commands::teleportNTiles(Player* player, const std::string& cmd, const std::string& param)
-{
-	int32_t ntiles = atoi(param.c_str());
-	if (ntiles == 0) {
-		return;
-	}
-
-	Position oldPosition = player->getPosition();
-	Position newPos = oldPosition;
-
-	switch (player->direction) {
-		case NORTH:
-			newPos.y -= ntiles;
-			break;
-		case SOUTH:
-			newPos.y += ntiles;
-			break;
-		case EAST:
-			newPos.x += ntiles;
-			break;
-		case WEST:
-			newPos.x -= ntiles;
-			break;
-		default:
-			break;
-	}
-
-	Position newPosition = g_game.getClosestFreeTile(player, 0, newPos, true);
-	if (newPosition.x == 0) {
-		player->sendCancel("You can not teleport there.");
-	} else if (g_game.internalTeleport(player, newPosition) == RET_NOERROR) {
-		if (ntiles != 1) {
-			g_game.addMagicEffect(oldPosition, NM_ME_POFF, player->isInGhostMode());
-			g_game.addMagicEffect(newPosition, NM_ME_TELEPORT, player->isInGhostMode());
 		}
 	}
 }
@@ -740,17 +585,6 @@ void Commands::sellHouse(Player* player, const std::string& cmd, const std::stri
 	}
 }
 
-void Commands::serverInfo(Player* player, const std::string& cmd, const std::string& param)
-{
-	std::ostringstream text;
-	text << "Server Info:";
-	text << "\nExp Rate: " << g_game.getExperienceStage(player->level);
-	text << "\nSkill Rate: " << g_config.getNumber(ConfigManager::RATE_SKILL);
-	text << "\nMagic Rate: " << g_config.getNumber(ConfigManager::RATE_MAGIC);
-	text << "\nLoot Rate: " << g_config.getNumber(ConfigManager::RATE_LOOT);
-	player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, text.str());
-}
-
 void Commands::buyHouse(Player* player, const std::string& cmd, const std::string& param)
 {
 	if (!player->isPremium()) {
@@ -799,117 +633,6 @@ void Commands::buyHouse(Player* player, const std::string& cmd, const std::strin
 
 	house->setHouseOwner(player->guid);
 	player->sendTextMessage(MSG_INFO_DESCR, "You have successfully bought this house, be sure to have the money for the rent in the bank.");
-}
-
-void Commands::whoIsOnline(Player* player, const std::string& cmd, const std::string& param)
-{
-	std::ostringstream ss;
-	ss << g_game.getPlayersOnline() << " players online.";
-	player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, ss.str());
-	ss.str("");
-
-	uint32_t i = 0;
-
-	const auto& players = g_game.getPlayers();
-
-	auto it = players.begin();
-	if (!g_config.getBoolean(ConfigManager::SHOW_GAMEMASTERS_ONLINE)) {
-		while (it != players.end()) {
-			Player* tmpPlayer = it->second;
-			if (!tmpPlayer->isAccessPlayer() || player->isAccessPlayer()) {
-				ss << (i > 0 ? ", " : "") << tmpPlayer->name << " [" << tmpPlayer->level << ']';
-				++i;
-			}
-			++it;
-
-			if (i == 10) {
-				ss << (it != players.end() ? ',' : '.');
-				player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, ss.str());
-				ss.str("");
-				i = 0;
-			}
-		}
-	} else {
-		while (it != players.end()) {
-			ss << (i > 0 ? ", " : "") << it->second->name << " [" << it->second->level << ']';
-			++it;
-			if (++i == 10) {
-				ss << (it != players.end() ? ',' : '.');
-				player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, ss.str());
-				ss.str("");
-				i = 0;
-			}
-		}
-	}
-
-	if (i > 0) {
-		ss << '.';
-		player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, ss.str());
-	}
-}
-
-void Commands::showPosition(Player* player, const std::string& cmd, const std::string& param)
-{
-	if (!param.empty() && player->isAccessPlayer()) {
-		StringVec exploded = explodeString(param, ", ", 2);
-		if (!exploded.size() || exploded.size() < 3) {
-			player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, "Not enough params.");
-			return;
-		}
-
-		uint16_t x = atoi(exploded[0].c_str());
-		uint16_t y = atoi(exploded[1].c_str());
-		uint8_t z = atoi(exploded[2].c_str());
-
-		Position oldPosition = player->getPosition();
-
-		if (g_game.internalTeleport(player, Position(x, y, z)) == RET_NOERROR) {
-			g_game.addMagicEffect(oldPosition, NM_ME_POFF, player->isInGhostMode());
-			g_game.addMagicEffect(player->getPosition(), NM_ME_TELEPORT, player->isInGhostMode());
-			return;
-		}
-	}
-
-	const Position& pos = player->getPosition();
-
-	std::ostringstream ss;
-	ss << "Your current position is [X: " << pos.x << " | Y: " << pos.y << " | Z: " << pos.getZ() << "].";
-	player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, ss.str());
-}
-
-void Commands::removeThing(Player* player, const std::string& cmd, const std::string& param)
-{
-	Position pos = player->getPosition();
-	pos = getNextPosition(player->direction, pos);
-	Tile* removeTile = g_game.getMap()->getTile(pos);
-	if (!removeTile) {
-		player->sendTextMessage(MSG_STATUS_SMALL, "Tile not found.");
-		g_game.addMagicEffect(pos, NM_ME_POFF);
-		return;
-	}
-
-	Thing* thing = removeTile->getTopVisibleThing(player);
-	if (!thing) {
-		player->sendTextMessage(MSG_STATUS_SMALL, "Object not found.");
-		g_game.addMagicEffect(pos, NM_ME_POFF);
-		return;
-	}
-
-	if (Creature* creature = thing->getCreature()) {
-		g_game.removeCreature(creature, true);
-	} else {
-		Item* item = thing->getItem();
-		if (item) {
-			if (item->isGroundTile()) {
-				player->sendTextMessage(MSG_STATUS_SMALL, "You may not remove a ground tile.");
-				g_game.addMagicEffect(pos, NM_ME_POFF);
-				return;
-			}
-
-			g_game.internalRemoveItem(item, std::max<int32_t>(1, std::min<int32_t>(atoi(param.c_str()), item->getItemCount())));
-			g_game.addMagicEffect(pos, NM_ME_MAGIC_BLOOD);
-		}
-	}
 }
 
 void Commands::newType(Player* player, const std::string& cmd, const std::string& param)
@@ -984,11 +707,11 @@ void Commands::forceRaid(Player* player, const std::string& cmd, const std::stri
 
 	uint32_t ticks = event->getDelay();
 	if (ticks > 0) {
-		g_scheduler.addEvent(createSchedulerTask(ticks,
-		                     boost::bind(&Raid::executeRaidEvent, raid, event)));
+		g_scheduler->addEvent(createSchedulerTask(ticks,
+		                     std::bind(&Raid::executeRaidEvent, raid, event)));
 	} else {
-		g_dispatcher.addTask(createTask(
-		                         boost::bind(&Raid::executeRaidEvent, raid, event)));
+		g_dispatcher->addTask(createTask(
+		                         std::bind(&Raid::executeRaidEvent, raid, event)));
 	}
 
 	player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, "Raid started.");

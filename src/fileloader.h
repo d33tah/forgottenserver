@@ -20,10 +20,6 @@
 #ifndef __OTSERV_FILELOADER_H__
 #define __OTSERV_FILELOADER_H__
 
-#include <string>
-#include <cstdio>
-#include <cstdlib>
-
 struct NodeStruct;
 
 typedef NodeStruct* NODE;

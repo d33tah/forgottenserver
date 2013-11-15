@@ -42,21 +42,15 @@
 #include "ban.h"
 #include "connection.h"
 #include "creatureevent.h"
+#include "scheduler.h"
 
-#include <ctime>
-#include <list>
-#include <iostream>
-#include <sstream>
-#include <string>
 #include <random>
 
-#include <boost/function.hpp>
 #include <boost/range/adaptor/reversed.hpp>
 
 extern Game g_game;
 extern ConfigManager g_config;
 extern Actions actions;
-extern Ban g_bans;
 extern CreatureEvents* g_creatureEvents;
 Chat g_chat;
 
@@ -69,9 +63,9 @@ template<class FunctionType>
 void ProtocolGame::addGameTaskInternal(bool droppable, uint32_t delay, const FunctionType& func)
 {
 	if (droppable) {
-		g_dispatcher.addTask(createTask(delay, func));
+		g_dispatcher->addTask(createTask(delay, func));
 	} else {
-		g_dispatcher.addTask(createTask(func));
+		g_dispatcher->addTask(createTask(func));
 	}
 }
 
@@ -123,7 +117,7 @@ void ProtocolGame::deleteProtocolTask()
 	Protocol::deleteProtocolTask();
 }
 
-bool ProtocolGame::login(const std::string& name, uint32_t accountId, OperatingSystem_t operatingSystem, bool gamemasterLogin)
+void ProtocolGame::login(const std::string& name, uint32_t accountId, OperatingSystem_t operatingSystem, bool gamemasterLogin)
 {
 	//dispatcher thread
 	Player* _player = g_game.getPlayerByName(name);
@@ -136,32 +130,32 @@ bool ProtocolGame::login(const std::string& name, uint32_t accountId, OperatingS
 
 		if (!IOLoginData::preloadPlayer(player, name)) {
 			disconnectClient(0x14, "Your character could not be loaded.");
-			return false;
+			return;
 		}
 
 		if (IOBan::isPlayerNamelocked(player->getGUID())) {
 			disconnectClient(0x14, "Your character has been namelocked.");
-			return false;
+			return;
 		}
 
 		if (gamemasterLogin && player->getAccountType() < ACCOUNT_TYPE_GAMEMASTER) {
 			disconnectClient(0x14, "You are not a gamemaster!");
-			return false;
+			return;
 		}
 
 		if (g_game.getGameState() == GAME_STATE_CLOSING && !player->hasFlag(PlayerFlag_CanAlwaysLogin)) {
 			disconnectClient(0x14, "The game is just going down.\nPlease try again later.");
-			return false;
+			return;
 		}
 
 		if (g_game.getGameState() == GAME_STATE_CLOSED && !player->hasFlag(PlayerFlag_CanAlwaysLogin)) {
 			disconnectClient(0x14, "Server is currently closed. Please try again later.");
-			return false;
+			return;
 		}
 
 		if (g_config.getBoolean(ConfigManager::ONE_PLAYER_ON_ACCOUNT) && player->getAccountType() < ACCOUNT_TYPE_GAMEMASTER && g_game.getPlayerByAccount(player->getAccount())) {
 			disconnectClient(0x14, "You may only login with one character\nof your account at the same time.");
-			return false;
+			return;
 		}
 
 		if (!player->hasFlag(PlayerFlag_CannotBeBanned)) {
@@ -178,7 +172,7 @@ bool ProtocolGame::login(const std::string& name, uint32_t accountId, OperatingS
 					ss << "Your account has been permanently banned by " << banInfo.bannedBy << ".\n\nReason specified:\n" << banInfo.reason;
 				}
 				disconnectClient(0x14, ss.str().c_str());
-				return false;
+				return;
 			}
 		}
 
@@ -199,12 +193,12 @@ bool ProtocolGame::login(const std::string& name, uint32_t accountId, OperatingS
 			}
 
 			getConnection()->closeConnection();
-			return false;
+			return;
 		}
 
 		if (!IOLoginData::loadPlayerByName(player, name)) {
 			disconnectClient(0x14, "Your character could not be loaded.");
-			return false;
+			return;
 		}
 
 		player->setOperatingSystem((OperatingSystem_t)operatingSystem);
@@ -212,19 +206,22 @@ bool ProtocolGame::login(const std::string& name, uint32_t accountId, OperatingS
 		if (!g_game.placeCreature(player, player->getLoginPosition())) {
 			if (!g_game.placeCreature(player, player->getTemplePosition(), false, true)) {
 				disconnectClient(0x14, "Temple position is wrong. Contact the administrator.");
-				return false;
+				return;
 			}
+		}
+
+		if (operatingSystem >= CLIENTOS_OTCLIENT_LINUX) {
+			player->registerCreatureEvent("ExtendedOpcode");
 		}
 
 		player->lastIP = player->getIP();
 		player->lastLoginSaved = std::max<time_t>(time(nullptr), player->lastLoginSaved + 1);
 		m_acceptPackets = true;
-		return true;
 	} else {
 		if (eventConnect != 0 || !g_config.getBoolean(ConfigManager::REPLACE_KICK_ON_LOGIN)) {
 			//Already trying to connect
 			disconnectClient(0x14, "You are already logged in.");
-			return false;
+			return;
 		}
 
 		if (_player->client) {
@@ -232,17 +229,16 @@ bool ProtocolGame::login(const std::string& name, uint32_t accountId, OperatingS
 			_player->isConnecting = true;
 
 			addRef();
-			eventConnect = g_scheduler.addEvent(createSchedulerTask(1000, boost::bind(&ProtocolGame::connect, this, _player->getID(), operatingSystem)));
-			return true;
+			eventConnect = g_scheduler->addEvent(createSchedulerTask(1000, std::bind(&ProtocolGame::connect, this, _player->getID(), operatingSystem)));
+			return;
 		}
 
 		addRef();
-		return connect(_player->getID(), operatingSystem);
+		connect(_player->getID(), operatingSystem);
 	}
-	return false;
 }
 
-bool ProtocolGame::connect(uint32_t playerId, OperatingSystem_t operatingSystem)
+void ProtocolGame::connect(uint32_t playerId, OperatingSystem_t operatingSystem)
 {
 	unRef();
 	eventConnect = 0;
@@ -250,7 +246,7 @@ bool ProtocolGame::connect(uint32_t playerId, OperatingSystem_t operatingSystem)
 	Player* _player = g_game.getPlayerByID(playerId);
 	if (!_player || _player->client) {
 		disconnectClient(0x14, "You are already logged in.");
-		return false;
+		return;
 	}
 
 	player = _player;
@@ -266,32 +262,31 @@ bool ProtocolGame::connect(uint32_t playerId, OperatingSystem_t operatingSystem)
 	player->lastIP = player->getIP();
 	player->lastLoginSaved = std::max<time_t>(time(nullptr), player->lastLoginSaved + 1);
 	m_acceptPackets = true;
-	return true;
 }
 
-bool ProtocolGame::logout(bool displayEffect, bool forced)
+void ProtocolGame::logout(bool displayEffect, bool forced)
 {
 	//dispatcher thread
 	if (!player) {
-		return false;
+		return;
 	}
 
 	if (!player->isRemoved()) {
 		if (!forced && player->getAccountType() != ACCOUNT_TYPE_GOD) {
 			if (player->getTile()->hasFlag(TILESTATE_NOLOGOUT)) {
 				player->sendCancelMessage(RET_YOUCANNOTLOGOUTHERE);
-				return false;
+				return;
 			}
 
 			if (!player->getTile()->hasFlag(TILESTATE_PROTECTIONZONE) && player->hasCondition(CONDITION_INFIGHT)) {
 				player->sendCancelMessage(RET_YOUMAYNOTLOGOUTDURINGAFIGHT);
-				return false;
+				return;
 			}
 
 			//scripting event - onLogout
 			if (!g_creatureEvents->playerLogout(player)) {
 				//Let the script handle the error message
-				return false;
+				return;
 			}
 		}
 
@@ -303,7 +298,8 @@ bool ProtocolGame::logout(bool displayEffect, bool forced)
 	if (Connection_ptr connection = getConnection()) {
 		connection->closeConnection();
 	}
-	return g_game.removeCreature(player);
+
+	g_game.removeCreature(player);
 }
 
 bool ProtocolGame::parseFirstPacket(NetworkMessage& msg)
@@ -314,7 +310,7 @@ bool ProtocolGame::parseFirstPacket(NetworkMessage& msg)
 	}
 
 	OperatingSystem_t operatingSystem = (OperatingSystem_t)msg.GetU16();
-	uint16_t version = msg.GetU16();
+	version = msg.GetU16();
 
 	msg.SkipBytes(5); // U32 clientVersion, U8 clientType
 
@@ -330,6 +326,14 @@ bool ProtocolGame::parseFirstPacket(NetworkMessage& msg)
 	key[3] = msg.GetU32();
 	enableXTEAEncryption();
 	setXTEAKey(key);
+
+	if (operatingSystem >= CLIENTOS_OTCLIENT_LINUX) {
+		NetworkMessage opcodeMessage;
+		opcodeMessage.AddByte(0x32);
+		opcodeMessage.AddByte(0x00);
+		opcodeMessage.AddU16(0x00);
+		writeToOutputBuffer(opcodeMessage);
+	}
 
 	bool gamemasterFlag = msg.GetByte() != 0;
 	std::string accountName = msg.GetString();
@@ -381,7 +385,7 @@ bool ProtocolGame::parseFirstPacket(NetworkMessage& msg)
 		return false;
 	}
 
-	g_dispatcher.addTask(createTask(boost::bind(&ProtocolGame::login, this, characterName, accountId, operatingSystem, gamemasterFlag)));
+	g_dispatcher->addTask(createTask(std::bind(&ProtocolGame::login, this, characterName, accountId, operatingSystem, gamemasterFlag)));
 	return true;
 }
 
@@ -479,6 +483,7 @@ void ProtocolGame::parsePacket(NetworkMessage& msg)
 		case 0x14: parseLogout(msg); break;
 		case 0x1D: parseReceivePingBack(msg); break;
 		case 0x1E: parseReceivePing(msg); break;
+		case 0x32: parseExtendedOpcode(msg); break; //otclient extended opcode
 		case 0x64: parseAutoWalk(msg); break;
 		case 0x65: parseMove(msg, NORTH); break;
 		case 0x66: parseMove(msg, EAST); break;
@@ -752,7 +757,7 @@ bool ProtocolGame::canSee(int32_t x, int32_t y, int32_t z) const
 //********************** Parse methods *******************************//
 void ProtocolGame::parseLogout(NetworkMessage& msg)
 {
-	g_dispatcher.addTask(createTask(boost::bind(&ProtocolGame::logout, this, true, false)));
+	g_dispatcher->addTask(createTask(std::bind(&ProtocolGame::logout, this, true, false)));
 }
 
 void ProtocolGame::parseCreatePrivateChannel(NetworkMessage& msg)
@@ -2800,7 +2805,7 @@ void ProtocolGame::sendOutfitWindow()
 
 	MountsList mounts;
 	for (const Mount& mount : Mounts::getInstance()->getMounts()) {
-		if (mount.isTamed(player)) {
+		if (player->hasMount(&mount)) {
 			mounts.push_back(mount);
 		}
 	}
@@ -3037,8 +3042,8 @@ void ProtocolGame::AddPlayerStats(NetworkMessage& msg)
 {
 	msg.AddByte(0xA0);
 
-	msg.AddU16(player->getHealth());
-	msg.AddU16(player->getPlayerInfo(PLAYERINFO_MAXHEALTH));
+	msg.AddU16(std::min<int32_t>(0xFFFF, player->getHealth()));
+	msg.AddU16(std::min<int32_t>(0xFFFF, player->getPlayerInfo(PLAYERINFO_MAXHEALTH)));
 
 	msg.AddU32(uint32_t(player->getFreeCapacity() * 100));
 	msg.AddU32(uint32_t(player->getCapacity() * 100));
@@ -3048,11 +3053,11 @@ void ProtocolGame::AddPlayerStats(NetworkMessage& msg)
 	msg.AddU16(player->getPlayerInfo(PLAYERINFO_LEVEL));
 	msg.AddByte(player->getPlayerInfo(PLAYERINFO_LEVELPERCENT));
 
-	msg.AddU16(player->getMana());
-	msg.AddU16(player->getPlayerInfo(PLAYERINFO_MAXMANA));
+	msg.AddU16(std::min<int32_t>(0xFFFF, player->getMana()));
+	msg.AddU16(std::min<int32_t>(0xFFFF, player->getPlayerInfo(PLAYERINFO_MAXMANA)));
 
-	msg.AddByte(player->getMagicLevel());
-	msg.AddByte(player->getBaseMagicLevel());
+	msg.AddByte(std::min<uint32_t>(0xFF, player->getMagicLevel()));
+	msg.AddByte(std::min<uint32_t>(0xFF, player->getBaseMagicLevel()));
 	msg.AddByte(player->getPlayerInfo(PLAYERINFO_MAGICLEVELPERCENT));
 
 	msg.AddByte(player->getPlayerInfo(PLAYERINFO_SOUL));
@@ -3364,4 +3369,13 @@ void ProtocolGame::AddShopItem(NetworkMessage& msg, const ShopInfo& item)
 	msg.AddU32(uint32_t(it.weight * 100));
 	msg.AddU32(item.buyPrice);
 	msg.AddU32(item.sellPrice);
+}
+
+void ProtocolGame::parseExtendedOpcode(NetworkMessage& msg)
+{
+	uint8_t opcode = msg.GetByte();
+	const std::string& buffer = msg.GetString();
+
+	// process additional opcodes via lua script event
+	addGameTask(&Game::parsePlayerExtendedOpcode, player->getID(), opcode, buffer);
 }
